@@ -181,7 +181,7 @@ class Ebookmaker(object):
                 #content = content.replace("&nbsp;&nbsp;&nbsp;&nbsp;", md_chapter_content_format_begin)
                 #content = content.replace('<br><br>', md_chapter_content_format_begin)
                 f.write(content + '\r\n')
-            f.write(content + '\r\n')
+            f.write('\r\n')
             print("写入成功: {:<64}".format(urls[index][1]))
         self.semaphore.release()
 
