@@ -15,5 +15,5 @@
 ## 用法
 
   由于目前只支持xbooktxt网站的内容抓取，只要是这个网站的小说，修改book.py里__init__函数里：
-    self.book_url = 'https://www.xbooktxt.net/2_2588/'
+  <pre><code>self.book_url = 'https://www.xbooktxt.net/2_2588/'</code></pre>
   为您自己的小说目录页地址即可。
