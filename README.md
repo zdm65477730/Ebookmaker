@@ -6,11 +6,13 @@
 
 自动爬取小说，并整合成一个txt文件，最后转换成Kindle可用的电子书格式。
 
-## 如何编译
+## 如何编译运行
 
   1. 使用 `git clone https://github.com/zdm65477730/Ebookmaker` 将Ebookmaker存储库克隆到您的计算机。
-  2. 下载kaf-cli可执行文件，与kindlegen放置到book.py同目录下。
-  3. 直接命令行python3 book.py编译即可。
+  2. 使用 `git clone https://github.com/zdm65477730/kaf-cli.git` 将kaf-cli存储库克隆到您的计算机。
+  3. 首先配置好golang环境，然后进入kaf-cli根目录编译kaf-cli：<pre><code>./build.sh</code></pre>
+  4. 得到kaf-cli的可执行文件，与kindlegen放置到book.py同目录下。
+  5. 再进入到Ebookmaker执行即可：<pre><code>python3 book.py</code></pre>
 
 ## 用法
 
