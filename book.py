@@ -10,10 +10,209 @@ import platform
 import urllib3
 import threading
 import subprocess
+import shutil
+import argparse
+import json
 from urllib3.exceptions import InsecureRequestWarning
 from urllib import error
 #from bs4 import BeautifulSoup
 urllib3.disable_warnings(InsecureRequestWarning)
+
+class MarkdownHelper(object):
+    def __init__(self):
+        self.former_summary_list = []
+        self.chapter_name_suffix = '.md'
+        self.overwrite = True
+        self.append = False
+        self.kindlegen_linux = 'kindlegen'
+        self.kindlegen_mac = 'kindlegen-darwin'
+        self.kindlegen_win = 'kindlegen.exe'
+        self.book_json = {
+            'title': 'MyBook',
+            'author': 'GitBook',
+            'description': '由GitBook制作',
+            'language': 'zh-hans'
+        }
+
+    def readTitle(self, dirPath):
+        try:
+            f = open(dirPath+'/book.json') 
+            book = json.load(f)
+            return book['title']
+        except:
+            return 'book' 
+
+    def mdfile_in_dir(self, dire):
+        """判断目录中是否有MD文件
+        """
+        for root, dirs, files in os.walk(dire):
+            for filename in files:
+                if re.search('.md$|.markdown$', filename):
+                    return True
+        return False
+
+    def is_markdown_file(self, filename):
+        """ 判断文件名是.Markdown
+        i: filename
+        o: filename without '.md' or '.markdown'
+        """
+        match = re.search('.md$|.markdown$', filename)
+        if not match:
+            return False
+        elif len(match.group()) is len('.md'):
+            return filename[:-3]
+        elif len(match.group()) is len('.markdown'):
+            return filename[:-9]
+
+    def createRead0(self,dir_input, filename):
+        #create 0-README.md
+        readmeFile = open(os.path.join(dir_input, filename), 'w')
+        readmeFile.close()
+
+    def sort_dir_file(self, listdir, dire):
+        # sort dirs and files, first files a-z, then dirs a-z
+        list_of_file = []
+        list_of_dir = []
+        for filename in listdir:
+            if os.path.isdir(os.path.join(dire, filename)):
+                list_of_dir.append(filename)
+            else:
+                list_of_file.append(filename)
+        for dire in list_of_dir:
+            list_of_file.append(dire)
+
+        filename_to_append = list()
+        for f in list_of_file:
+            if ('章' not in f or os.path.isdir(f)):
+                filename_to_append.insert(0, f)
+        list_of_file = [x for x in list_of_file if x not in filename_to_append]
+        if list_of_file:
+            list_of_file.sort(key=lambda x: int(x.split('章')[0][1:]))
+        for f in filename_to_append:
+            list_of_file.insert(0, f)
+
+        return list_of_file
+
+    def write_md_filename(self, filename, append):
+        """ write markdown filename
+        i: filename and append
+        p: if append: find former list name and return
+        else: write filename
+        """
+        if append:
+            for line in self.former_summary_list:
+                if re.search(filename, line):
+                    s = re.search('\[.*\]\(', line)
+                    return s.group()[1:-2]
+            else:
+                return self.is_markdown_file(filename)
+        else:
+            return self.is_markdown_file(filename)
+
+    def output_markdown(self, dire, base_dir, output_file, append, iter_depth=0):
+        """Main iterator for get information from every file/folder
+        i: directory, base directory(to calulate relative path), 
+        output file name, iter depth.
+        p: Judge is directory or is file, then process .md/.markdown files.
+        o: write .md information (with identation) to output_file.
+        """
+        ignores = ['_book', 'docs', 'images', 'node_modules', 'dict', '.git']
+
+        for filename in self.sort_dir_file(os.listdir(dire), base_dir):
+            # add list and sort
+            if filename in ignores:
+                #print('continue ', filename)  # output log
+                continue
+
+            #print('Processing ', filename)  # output log
+            file_or_path = os.path.join(dire, filename)
+            if os.path.isdir(file_or_path):  #is dir
+                if self.mdfile_in_dir(file_or_path):
+                    # if there is .md files in the folder, output folder name
+                    # output_file.write('  ' * iter_depth + '* ' + filename + '\n')
+                    self.createRead0(file_or_path, '0-README.md')
+                    output_file.write('  ' * iter_depth + '* [{}]({}/{})\n'.format(
+                        filename, filename, '0-README.md'))
+                    self.output_markdown(file_or_path, base_dir, output_file, append,
+                                    iter_depth + 1)  # iteration
+            else:  # is file
+                if self.is_markdown_file(filename):
+                    # re to find target markdown files, $ for matching end of filename
+                    if (filename not in [
+                            'SUMMARY.md', 'SUMMARY-GitBook-auto-summary.md',
+                            '0-README.md', 'README.md'
+                    ]):
+                        #or iter_depth != 0): # escape SUMMARY.md at base directory
+                        output_file.write(
+                            '  ' * iter_depth + '* [{}]({})\n'.format(
+                                self.write_md_filename(filename, append),
+                                os.path.join(
+                                    os.path.relpath(dire, base_dir), filename)))
+                        # iter depth for indent, relpath and join to write link.
+
+    def create_gitbook_summary(self,dire,overwrite=False,append=False):
+        # print information
+        print('GitBook auto summary:', dire)
+        if overwrite:
+            print('--overwrite')
+        if append and os.path.exists(os.path.join(dire, 'SUMMARY.md')):
+            #append: read former SUMMARY.md
+            print('--append')
+            with open(os.path.join(dire, 'SUMMARY.md')) as f:
+                self.former_summary_list = f.readlines()
+                f.close()
+        # output to flie
+        if (overwrite == False and os.path.exists(os.path.join(dire, 'SUMMARY.md'))):
+            # overwrite logic
+            filename = 'SUMMARY-GitBook-auto-summary.md'
+        else:
+            filename = 'SUMMARY.md'
+        output = open(os.path.join(dire, filename), 'w')
+        output.write('# 目录\n\n')
+        output.write('* [简介](./README.md)\n')
+        self.output_markdown(dire, dire, output, append)
+        output.close()
+        print('GitBook auto summary文件生成成功！')
+
+    def create_gitbook_book_json(self,dire,title,author,description,language):
+        self.book_json['title'] = title
+        self.book_json['author'] = author
+        self.book_json['description'] = description
+        self.book_json['language'] = language
+        json_data = json.dumps(self.book_json,ensure_ascii=False)
+
+        with open(os.path.join(dire, 'book.json'), 'w') as f:
+            f.write(json_data)
+            f.close()
+        print('GitBook book.json生成成功！')
+
+    def convert_by_kindlegen(self, dire):
+        print('转换为Kindle电子书格式...')
+        sysstr = platform.system()
+        if (sysstr == "Windows"):
+            kindlegen_tool = self.kindlegen_win
+        elif (sysstr == "Linux"):
+            kindlegen_tool = self.kindlegen_linux
+        elif (sysstr == "Mac"):
+            kindlegen_tool = self.kindlegen_mac
+        if not os.path.isfile(kindlegen_tool):
+            print('kindlegen工具不存在脚本所在文件夹！请放入后重试！')
+        else:
+            title = self.readTitle(dire)
+            gitbook_command = 'gitbook epub {} {}'.format(dire, dire + '/docs/' + title + '.epub')
+            ret = subprocess.run(gitbook_command,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,encoding="utf-8",timeout=1200)
+            if ret == 0:
+                print('*************************************************************')
+                print('gitBook创建epub成功:', dire)
+                print('*************************************************************')
+            else:
+                print('gitBook创建epub失败:', gitbook_command)
+            kindlegen_command = os.path.join('.', kindlegen_tool) + ' ' + dire + '/docs/' + title + '.epub'
+            ret = subprocess.run(kindlegen_command,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,encoding="utf-8",timeout=600)
+            if ret.returncode != 0:
+                print('kindlegen命令操作失败：', kindlegen_command)
+            else:
+                print('gitBook转换mobi成功：', dire)
 
 class Ebookmaker(object):
     def __init__(self):
@@ -21,7 +220,7 @@ class Ebookmaker(object):
         #self.book_host = 'www.xbiquge.la'
         #self.book_referer = 'https://www.xbiquge.la/66/66747/26547971.html'
         #self.cookie = '_abcde_qweasd=0; Hm_lvt_169609146ffe5972484b0957bd1b46d6=1626520436,1626585865; Hm_lpvt_169609146ffe5972484b0957bd1b46d6=1626597513'
-        #self.book_title_re = re.compile(r'<meta property="og:title" content="(.*?)"/>')
+        #self.book_name_re = re.compile(r'<meta property="og:name" content="(.*?)"/>')
         #self.book_description_re = re.compile(r'<meta property="og:description" content="(.*?)"/>')
         #self.book_author_re = re.compile(r'<meta property="og:novel:author" content="(.*?)"/>')
         # <dd><a href='/66/66747/26547971.html' >第1章 重生</a></dd>
@@ -65,11 +264,21 @@ class Ebookmaker(object):
             #'Host':host,
             #'Referer':referer
         }
-        self.book_title_re = re.compile(r'<meta property="og:novel:book_name" content="(.*?)"/>')
+        self.book_name_re = re.compile(r'<meta property="og:novel:book_name" content="(.*?)"/>')
         self.book_description_re = re.compile(r'<meta property="og:description" content="(.*?)"/>')
         self.book_author_re = re.compile(r'<meta property="og:novel:author" content="(.*?)"/>')
         self.list_reg = re.compile(r'<dd><a href="/2_2588/([0-9]{5,6}\.html)"  >(.*?)</a></dd>')
         self.chapter_content_reg = re.compile(r'&nbsp;&nbsp;&nbsp;&nbsp;(.*?)<br><br>', re.S)
+        self.chapter_dict = {}
+        ######################################################################################
+        # For Calibre
+        self.chapter_name_format_begin = "# "
+        self.chapter_name_format_end = " #"
+        self.chapter_name_suffix = ".md"
+        # For kaf-cli
+        #self.chapter_name_format_begin = ""
+        #self.chapter_name_format_end = ""
+        #self.chapter_name_suffix = ".txt"
         ######################################################################################
         self.daili_url_base = 'https://ip.jiangxianli.com/?page='
         self.daili_host = 'ip.jiangxianli.com'
@@ -77,15 +286,14 @@ class Ebookmaker(object):
         self.daili_re = re.compile(r'data-url="http://(\d+\.\d+\.\d+\.\d+:\d+)"')
         self.proxy_pool_url = 'http://httpbin.org/ip'
         self.proxy_pool_host = 'httpbin.org'
-        ######################################################################################
-        # For Calibre
-        #self.chapter_title_format_begin = "# "
-        #self.chapter_title_format_end = " #"
-        # For kaf-cli
-        self.chapter_title_format_begin = ""
-        self.chapter_title_format_end = ""
+        self.book_name = 'MyBook'
+        self.book_author = 'Ebookmaker'
+        self.book_description = 'Made by Ebookmaker!'
+        self.book_default_output_name = 'outfile' + self.chapter_name_suffix
+        self.book_default_kafcli_bottom = '1'
         ######################################################################################
         self.thread_num = 5
+        self.ip_pool_web_num = 20
         self.semaphore = threading.BoundedSemaphore(self.thread_num)
         self.sem = threading.Semaphore()
         self.IP = []
@@ -161,13 +369,53 @@ class Ebookmaker(object):
             self.sem.release()
         self.semaphore.release()
 
+    def get_ip_pool(self):
+        ip_threads = []
+        for idx in range(self.ip_pool_web_num):
+            t = threading.Thread(target=self.ip_pool,args=(idx,))
+            t.start()
+            ip_threads.append(t)
+            if idx%self.thread_num == 0:
+                time.sleep(3)
+        for t in ip_threads:
+            t.join()
+        new_list = list(set(self.IP))
+        new_list.sort(key=self.IP.index)
+        self.IP = new_list
+        print('代理IP池大小为{}'.format(len(self.IP)))
+
+    def get_proxy_pool(self):
+        proxy_pool_threads = []
+        for idx in range(len(self.IP)):
+            t = threading.Thread(target=self.proxy_pool,args=(self.IP[idx],))
+            t.start()
+            proxy_pool_threads.append(t)
+            if idx%self.thread_num == 0:
+                time.sleep(3)
+        for t in proxy_pool_threads:
+            t.join()
+        print('筛选后的代理池大小为{}'.format(len(self.proxyPool)))
+
+    def get_book_info(self):
+        res = self.loadData(self.book_url, referer=self.book_referer, host=self.book_host)
+        if res == 'ERROR':
+            print("访问失败: {:<64}".format(self.book_url))
+            return list()
+        self.book_name = self.book_name_re.findall(res)
+        self.book_description = self.book_description_re.findall(res)
+        self.book_author = self.book_author_re.findall(res)
+        urls = self.list_reg.findall(res)
+        print("获取书籍信息：\n{}\n{}\n{}\n".format(self.book_name[0],self.book_author[0],self.book_description[0]))
+        return urls
+
     def work(self,base_path,index,urls,cookie=None,proxy_pool=None):
         self.semaphore.acquire()
-        write_path = os.path.join(base_path, str(index+1) + '.txt')
+        write_path = os.path.join(base_path, urls[index][1] + self.chapter_name_suffix)
+        self.chapter_dict[str(index+1)] = write_path
         if os.path.isfile(write_path):
             os.remove(write_path)
         with open(write_path, 'a+') as f:
-            f.write(self.chapter_title_format_begin + urls[index][1] + self.chapter_title_format_end + '\r\n\r\n')
+            f.write(self.chapter_name_format_begin + urls[index][1] + self.chapter_name_format_end + '\n\n')
             chapter_html = self.loadData(self.book_url + urls[index][0], host=self.book_host, referer=self.book_url, cookie=cookie, proxy_pool=proxy_pool)
             if chapter_html == 'ERROR':
                 print("访问失败: {:<64}".format(urls[index][1]))
@@ -180,110 +428,111 @@ class Ebookmaker(object):
             for content in chapter_content:
                 #content = content.replace("&nbsp;&nbsp;&nbsp;&nbsp;", md_chapter_content_format_begin)
                 #content = content.replace('<br><br>', md_chapter_content_format_begin)
-                f.write(content + '\r\n')
-            f.write('\r\n')
+                f.write(content + '\n')
+            f.write('\n')
             print("写入成功: {:<64}".format(urls[index][1]))
         self.semaphore.release()
 
+    def create_book_store_dir(self,dir):
+        print('开始创建书籍存档目录：%s...' %dir)
+        if not os.path.exists(dir):
+            os.makedirs(dir)
+
+    def fetch_and_store_urls(self,dir,urls):
+        work_threads = []
+        self.thread_num = 50
+        self.semaphore = threading.BoundedSemaphore(self.thread_num)
+        chapter_len = len(urls)
+        for idx in range(chapter_len):
+            t = threading.Thread(target=self.work,args=(dir,idx,urls,None,self.proxyPool[random.randint(0,len(self.proxyPool)-1)]))
+            t.start()
+            work_threads.append(t)
+            if idx%self.thread_num == 0:
+                time.sleep(3)
+        for t in work_threads:
+            t.join()
+
+    def merge_chapters(self,dir):
+        print('合并所有章节...')
+        res = ""
+        for k in sorted(self.chapter_dict):
+        #files.sort(key=lambda x: int(x.split('章')[0][1:] + x.split(self.chapter_name_suffix)[0][:1]))
+        #for file in files:
+            file = self.chapter_dict[k]
+            if file.endswith(self.chapter_name_suffix):
+                path = os.path.join(dir,file)
+                with open(path, 'r', encoding='utf-8') as file:
+                    content = file.read()
+                    file.close()
+                res += content
+        path = os.path.join(dir,self.book_default_output_name)
+        with open(path, 'w', encoding='utf-8') as outFile:
+            outFile.write(res)
+            outFile.close()
+
+    def convert_by_kafcli(self,dir,book_name,book_author,book_bottom='1',book_cover='cover.png'):
+        print('转换为Kindle电子书格式...')
+        sysstr = platform.system()
+        if (sysstr == "Windows"):
+            kafcli_tool = self.kafcli_win
+        elif (sysstr == "Linux"):
+            kafcli_tool = self.kafcli_linux
+        elif (sysstr == "Mac"):
+            kafcli_tool = self.kafcli_mac
+        if not os.path.isfile(kafcli_tool):
+            print('kaf-cli工具不存在脚本所在文件夹！请放入后重试！')
+        else:
+            kafcli_command = os.path.join(dir, kafcli_tool) + ' -filename ' + book_name + '/' + self.book_default_output_name + ' -bookname ' + book_name + ' -author ' + book_author + ' -cover ' + book_cover + ' -bottom ' + book_bottom
+            ret = subprocess.run(kafcli_command,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,encoding="utf-8",timeout=300)
+            if ret.returncode != 0:
+                print('kaf-cli操作失败!',ret)
+            else:
+                print('所有操作都已经完成!!!')
+
 def main():
     em = Ebookmaker()
-    ip_threads = []
-    for idx in range(20):
-        t = threading.Thread(target=em.ip_pool,args=(idx,))
-        t.start()
-        ip_threads.append(t)
-        if idx%em.thread_num == 0:
-            time.sleep(3)
-    for t in ip_threads:
-        t.join()
-    new_list = list(set(em.IP))
-    new_list.sort(key=em.IP.index)
-    em.IP = new_list
-    print('代理IP池大小为{}'.format(len(em.IP)))
-
-    proxy_pool_threads = []
-    for idx in range(len(em.IP)):
-        t = threading.Thread(target=em.proxy_pool,args=(em.IP[idx],))
-        t.start()
-        proxy_pool_threads.append(t)
-        if idx%em.thread_num == 0:
-            time.sleep(3)
-    for t in proxy_pool_threads:
-        t.join()
-    print('筛选后的代理池大小为{}'.format(len(em.proxyPool)))
-
-    res = em.loadData(em.book_url, referer=em.book_referer, host=em.book_host)
-    if res == 'ERROR':
-        print("访问失败: {:<64}".format(em.book_url))
+    em.get_ip_pool()
+    em.get_proxy_pool()
+    urls = em.get_book_info()
+    if not urls:
         return
-    book_title = em.book_title_re.findall(res)
-    book_description = em.book_description_re.findall(res)
-    book_author = em.book_author_re.findall(res)
-    urls = em.list_reg.findall(res)
-    print("获取书籍信息：\n{}\n{}\n{}\n".format(book_title[0],book_author[0],book_description[0]))
+    book_path = os.path.join('ebooks', em.book_name[0])
+    em.create_book_store_dir(book_path)
 
-    print('开始创建书籍存档目录：%s...' %book_title[0])
-    if not os.path.exists(book_title[0]):
-        os.makedirs(book_title[0])
+    print('拷贝封面cover.jpg文件到当前目录...')
+    if os.path.exists('cover.jpg'):
+        shutil.copy('cover.jpg', book_path)
+    else:
+        print('封面cover.jpg文件不存在，如果需要生成封面，请把书对应的cover.jpg放到脚本同一目录下。')
 
     print('现在开始将所有章节存入文件...')
-    work_threads = []
-    em.thread_num = 50
-    em.semaphore = threading.BoundedSemaphore(em.thread_num)
-    chapter_len = len(urls)
-    for idx in range(chapter_len):
-        t = threading.Thread(target=em.work,args=(book_title[0],idx,urls,None,em.proxyPool[random.randint(0,len(em.proxyPool)-1)]))
-        t.start()
-        work_threads.append(t)
-        if idx%em.thread_num == 0:
-            time.sleep(3)
-    for t in work_threads:
-        t.join()
-    work_threads = []
-
+    em.fetch_and_store_urls(book_path, urls)
     print('现在重新处理写入失败的章节...')
-    chapter_len = len(em.missing_urls)
-    for idx in range(chapter_len):
-        t = threading.Thread(target=em.work,args=(book_title[0],idx,em.missing_urls,None,em.proxyPool[random.randint(0,len(em.proxyPool)-1)]))
-        t.start()
-        work_threads.append(t)
-        if idx%em.thread_num == 0:
-            time.sleep(3)
-    for t in work_threads:
-        t.join()
+    em.fetch_and_store_urls(book_path, em.missing_urls)
 
-    print('合并所有章节...')
-    res = ""
-    files = os.listdir(book_title[0])
-    files.sort(key=lambda x: int(x.split('.txt')[0]))
-    for file in files:
-        if file.endswith('.txt'):
-            path = os.path.join(book_title[0],file)
-            with open(path, 'r', encoding='utf-8') as file:
-                content = file.read()
-                file.close()
-            res += content
-    with open(book_title[0] + '/outfile.txt', 'w', encoding='utf-8') as outFile:
-        outFile.write(res)
-        outFile.close()
+    # Use kaf-cli to convert ePub book
+    #em.merge_chapters(book_path)
+    #em.convert_by_kafcli('.', em.book_name[0], em.book_author[0], em.book_default_kafcli_bottom)
 
-    print('转换为Kindle电子书格式...')
-    sysstr = platform.system()
-    if (sysstr == "Windows"):
-        kafcli_tool = em.kafcli_win
-    elif (sysstr == "Linux"):
-        kafcli_tool = em.kafcli_linux
-    elif (sysstr == "Mac"):
-        kafcli_tool = em.kafcli_mac
-    if not os.path.isfile(kafcli_tool):
-        print('kaf-cli工具不存在脚本所在文件夹！请放入后重试！')
+    # Use gitbook to build mobi book
+    mh = MarkdownHelper()
+    if mh.overwrite:
+        print('覆盖SUMMARY文件：', book_path + '/SUMMARY.md')
     else:
-        kafcli_command = os.path.join('.', kafcli_tool) + ' -filename ' + book_title[0] + '/outfile.txt' + ' -bookname ' + book_title[0] + ' -author ' + book_author[0] + ' -cover cover.png'
-        ret = subprocess.run(kafcli_command,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,encoding="utf-8",timeout=300)
-        if ret.returncode != 0:
-            print('kaf-cli操作失败!',ret)
-        else:
-            print('所有操作都已经完成!!!')
+        print('创建SUMMARY文件：', book_path + '/SUMMARY-GitBook-auto-summary.md')
+    mh.create_gitbook_summary(book_path, overwrite=mh.overwrite, append=mh.append)
+
+    print('gitBook正在创建mobi文件...')
+    if not os.path.exists(book_path + '/docs'):
+        os.makedirs(book_path + '/docs')
+    readmeFile = open(os.path.join(book_path, 'README.md'), 'w')
+    readmeFile.write('# {} #\n\n'.format('简介'))
+    readmeFile.write('{}\n'.format(em.book_description[0]))
+    readmeFile.close()
+    mh.create_gitbook_book_json(book_path,em.book_name[0],em.book_author[0],em.book_description[0],'zh-hans')
+    mh.convert_by_kindlegen(book_path)
+
+    print('gitBook生成mobi文件完成！')
 
 if __name__ == '__main__':
     main()
