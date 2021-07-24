@@ -500,10 +500,11 @@ def main():
     em.create_book_store_dir(book_path)
 
     print('拷贝封面cover.jpg文件到当前目录...')
-    if os.path.exists('cover.jpg'):
+    if os.path.exists('cover.jpg') and os.path.exists('cover_small.jpg'):
         shutil.copy('cover.jpg', book_path)
+        shutil.copy('cover_small.jpg', book_path)
     else:
-        print('封面cover.jpg文件不存在，如果需要生成封面，请把书对应的cover.jpg放到脚本同一目录下。')
+        print('封面cover.jpg和cover_small.jpg文件不存在，如果需要生成封面，请把书对应的cover.jpg和cover_small.jpg放到脚本同一目录下。')
 
     print('现在开始将所有章节存入文件...')
     em.fetch_and_store_urls(book_path, urls)
