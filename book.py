@@ -297,7 +297,7 @@ class Ebookmaker(object):
         self.book_output_name = 'outfile' + self.chapter_name_suffix
         self.book_kafcli_bottom = '1'
         ######################################################################################
-        self.thread_num = 5
+        self.thread_num = 10
         self.ip_pool_web_num = 20
         self.semaphore = threading.BoundedSemaphore(self.thread_num)
         self.sem = threading.Semaphore()
@@ -378,7 +378,7 @@ class Ebookmaker(object):
             t.start()
             ip_threads.append(t)
             if idx%self.thread_num == 0:
-                time.sleep(3)
+                time.sleep(1)
         for t in ip_threads:
             t.join()
         new_list = list(set(self.IP))
@@ -392,8 +392,6 @@ class Ebookmaker(object):
             t = threading.Thread(target=self.proxy_pool,args=(self.IP[idx],))
             t.start()
             proxy_pool_threads.append(t)
-            if idx%self.thread_num == 0:
-                time.sleep(3)
         for t in proxy_pool_threads:
             t.join()
         print('筛选后的代理池大小为{}'.format(len(self.proxyPool)))
@@ -456,8 +454,8 @@ class Ebookmaker(object):
             t = threading.Thread(target=self.work,args=(dir,idx,urls,None,self.proxyPool[random.randint(0,len(self.proxyPool)-1)]))
             t.start()
             work_threads.append(t)
-            if idx%self.thread_num == 0:
-                time.sleep(3)
+            #if idx%self.thread_num == 0:
+            #    time.sleep(3)
         for t in work_threads:
             t.join()
 
