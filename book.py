@@ -4,7 +4,6 @@
 import re
 import os
 import time
-import error
 import random
 import requests
 import platform
@@ -12,7 +11,6 @@ import urllib3
 import threading
 import subprocess
 import shutil
-import argparse
 import json
 from urllib3.exceptions import InsecureRequestWarning
 from urllib import error
@@ -296,8 +294,8 @@ class Ebookmaker(object):
         self.book_name = 'MyBook'
         self.book_author = 'Ebookmaker'
         self.book_description = 'Made by Ebookmaker!'
-        self.book_default_output_name = 'outfile' + self.chapter_name_suffix
-        self.book_default_kafcli_bottom = '1'
+        self.book_output_name = 'outfile' + self.chapter_name_suffix
+        self.book_kafcli_bottom = '1'
         ######################################################################################
         self.thread_num = 5
         self.ip_pool_web_num = 20
@@ -415,13 +413,19 @@ class Ebookmaker(object):
     def work(self,base_path,index,urls,cookie=None,proxy_pool=None):
         self.semaphore.acquire()
         write_path = os.path.join(base_path, urls[index][1] + self.chapter_name_suffix)
-        self.chapter_dict[str(index+1)] = urls[index][1] + self.chapter_name_suffix
+        self.sem.acquire()
+        self.chapter_dict[index+1] = urls[index][1] + self.chapter_name_suffix
+        self.sem.release()
         if os.path.isfile(write_path):
-            os.remove(write_path)
-        with open(write_path, 'a+') as f:
+            if os.path.getsize(write_path):
+                self.semaphore.release()
+                return
+        with open(write_path, 'w+') as f:
             f.write(self.chapter_name_format_begin + urls[index][1] + self.chapter_name_format_end + '\n\n')
             chapter_html = self.loadData(self.book_url + urls[index][0], host=self.book_host, referer=self.book_url, cookie=cookie, proxy_pool=proxy_pool)
             if chapter_html == 'ERROR':
+                f.seek(0)
+                f.truncate()
                 print("访问失败: {:<64}".format(urls[index][1]))
                 self.sem.acquire()
                 self.missing_urls.append(urls[index])
@@ -469,7 +473,8 @@ class Ebookmaker(object):
                     content = file.read()
                     file.close()
                 res += content
-        path = os.path.join(dir,self.book_default_output_name)
+        self.book_output_name = self.book_name[0] + self.chapter_name_suffix
+        path = os.path.join(dir,self.book_output_name)
         with open(path, 'w', encoding='utf-8') as outFile:
             outFile.write(res)
             outFile.close()
@@ -486,7 +491,7 @@ class Ebookmaker(object):
         if not os.path.isfile(kafcli_tool):
             print('kaf-cli工具不存在脚本所在文件夹！请放入后重试！')
         else:
-            kafcli_command = os.path.join(tool_base_dir, kafcli_tool) + ' -filename ' + os.path.join(books_base_dir, book_name, self.book_default_output_name) + ' -bookname ' + book_name + ' -author ' + book_author + ' -cover ' + book_cover + ' -bottom ' + book_bottom
+            kafcli_command = os.path.join(tool_base_dir, kafcli_tool) + ' -filename ' + os.path.join(books_base_dir, book_name, self.book_output_name) + ' -bookname ' + book_name + ' -author ' + book_author + ' -cover ' + book_cover + ' -bottom ' + book_bottom
             ret = subprocess.run(kafcli_command,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,encoding="utf-8",timeout=600)
             if ret.returncode != 0:
                 print('kaf-cli操作失败!',ret)
@@ -527,7 +532,7 @@ def main():
     #   " => ”
     #   'i' => ''
     #   &nbsp => ''
-    em.convert_by_kafcli(em.book_tool_base_dir, em.books_base_dir, em.book_name[0], em.book_author[0], em.book_default_kafcli_bottom)
+    em.convert_by_kafcli(em.book_tool_base_dir, em.books_base_dir, em.book_name[0], em.book_author[0], em.book_kafcli_bottom)
 
     '''
     # Use gitbook to build mobi book
