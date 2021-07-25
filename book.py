@@ -214,6 +214,14 @@ class MarkdownHelper(object):
             else:
                 print('gitBook转换mobi成功：', dire)
 
+    def covert_by_pandoc(self,dire):
+        for root, files in os.walk(dire):
+            for file in files:
+                if os.path.splitext(file)[1] == '.md':
+                    os.chdir(root)
+                    print("pandoc " + file + ' -o ' + os.path.splitext(file)[0] + '.epub')
+                    os.system("pandoc " + file + ' -o ' + os.path.splitext(file)[0] + '.epub')
+
 class Ebookmaker(object):
     def __init__(self):
         #self.book_url = 'https://www.xbiquge.la/66/66747/'
@@ -527,7 +535,7 @@ def main():
     if not os.path.exists(book_path + '/docs'):
         os.makedirs(book_path + '/docs')
     readmeFile = open(os.path.join(book_path, 'README.md'), 'w')
-    readmeFile.write('# {} #\n\n'.format('简介'))
+    readmeFile.write('# {}\n\n'.format('简介'))
     readmeFile.write('{}\n'.format(em.book_description[0]))
     readmeFile.close()
     mh.create_gitbook_book_json(book_path,em.book_name[0],em.book_author[0],em.book_description[0],'zh-hans')
