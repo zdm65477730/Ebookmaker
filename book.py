@@ -199,7 +199,8 @@ class MarkdownHelper(object):
             print('kindlegen工具不存在脚本所在文件夹！请放入后重试！')
         else:
             title = self.readTitle(dire)
-            gitbook_command = 'gitbook epub {} {}'.format(dire, dire + '/docs/' + title + '.epub')
+            gitbook_command = 'gitbook epub --debug --log=debug {} {}'.format(dire, dire + '/docs/' + title + '.epub')
+            print('执行：', gitbook_command)
             ret = subprocess.run(gitbook_command,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,encoding="utf-8",timeout=1200)
             if ret == 0:
                 print('*************************************************************')
@@ -213,14 +214,6 @@ class MarkdownHelper(object):
                 print('kindlegen命令操作失败：', kindlegen_command)
             else:
                 print('gitBook转换mobi成功：', dire)
-
-    def covert_by_pandoc(self,dire):
-        for root, files in os.walk(dire):
-            for file in files:
-                if os.path.splitext(file)[1] == '.md':
-                    os.chdir(root)
-                    print("pandoc " + file + ' -o ' + os.path.splitext(file)[0] + '.epub')
-                    os.system("pandoc " + file + ' -o ' + os.path.splitext(file)[0] + '.epub')
 
 class Ebookmaker(object):
     def __init__(self):
@@ -280,13 +273,18 @@ class Ebookmaker(object):
         self.chapter_dict = {}
         ######################################################################################
         # For Calibre
-        self.chapter_name_format_begin = "# "
-        self.chapter_name_format_end = " #"
-        self.chapter_name_suffix = ".md"
+        #self.chapter_name_format_begin = "# "
+        #self.chapter_name_format_end = " #"
+        #self.chapter_name_suffix = ".md"
         # For kaf-cli
-        #self.chapter_name_format_begin = ""
-        #self.chapter_name_format_end = ""
-        #self.chapter_name_suffix = ".txt"
+        self.chapter_name_format_begin = ""
+        self.chapter_name_format_end = ""
+        self.chapter_name_suffix = ".txt"
+        self.kafcli_linux = 'kaf-cli-linux'
+        self.kafcli_mac = 'kaf-cli-darwin'
+        self.kafcli_win = 'kaf-cli.exe'
+        self.book_tool_base_dir = '.'
+        self.books_base_dir = os.path.join(self.book_tool_base_dir, 'ebooks')
         ######################################################################################
         self.daili_url_base = 'https://ip.jiangxianli.com/?page='
         self.daili_host = 'ip.jiangxianli.com'
@@ -308,9 +306,6 @@ class Ebookmaker(object):
         self.proxyPool = []
         self.missing_urls = []
         ######################################################################################
-        self.kafcli_linux = 'kaf-cli-linux'
-        self.kafcli_mac = 'kaf-cli-darwin'
-        self.kafcli_win = 'kaf-cli.exe'
 
     def loadData(self,url,host=None,referer=None,cookie=None,proxy_pool=None):
         if host == None:
@@ -419,7 +414,7 @@ class Ebookmaker(object):
     def work(self,base_path,index,urls,cookie=None,proxy_pool=None):
         self.semaphore.acquire()
         write_path = os.path.join(base_path, urls[index][1] + self.chapter_name_suffix)
-        self.chapter_dict[str(index+1)] = write_path
+        self.chapter_dict[str(index+1)] = urls[index][1] + self.chapter_name_suffix
         if os.path.isfile(write_path):
             os.remove(write_path)
         with open(write_path, 'a+') as f:
@@ -478,7 +473,7 @@ class Ebookmaker(object):
             outFile.write(res)
             outFile.close()
 
-    def convert_by_kafcli(self,dir,book_name,book_author,book_bottom='1',book_cover='cover.png'):
+    def convert_by_kafcli(self,tool_base_dir,books_base_dir,book_name,book_author,book_bottom='1',book_cover='cover.png'):
         print('转换为Kindle电子书格式...')
         sysstr = platform.system()
         if (sysstr == "Windows"):
@@ -490,8 +485,8 @@ class Ebookmaker(object):
         if not os.path.isfile(kafcli_tool):
             print('kaf-cli工具不存在脚本所在文件夹！请放入后重试！')
         else:
-            kafcli_command = os.path.join(dir, kafcli_tool) + ' -filename ' + book_name + '/' + self.book_default_output_name + ' -bookname ' + book_name + ' -author ' + book_author + ' -cover ' + book_cover + ' -bottom ' + book_bottom
-            ret = subprocess.run(kafcli_command,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,encoding="utf-8",timeout=300)
+            kafcli_command = os.path.join(tool_base_dir, kafcli_tool) + ' -filename ' + os.path.join(books_base_dir, book_name, self.book_default_output_name) + ' -bookname ' + book_name + ' -author ' + book_author + ' -cover ' + book_cover + ' -bottom ' + book_bottom
+            ret = subprocess.run(kafcli_command,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,encoding="utf-8",timeout=600)
             if ret.returncode != 0:
                 print('kaf-cli操作失败!',ret)
             else:
@@ -504,15 +499,17 @@ def main():
     urls = em.get_book_info()
     if not urls:
         return
-    book_path = os.path.join('ebooks', em.book_name[0])
+    book_path = os.path.join(em.books_base_dir, em.book_name[0])
     em.create_book_store_dir(book_path)
 
     print('拷贝封面cover.jpg文件到当前目录...')
     if os.path.exists('cover.jpg') and os.path.exists('cover_small.jpg'):
         shutil.copy('cover.jpg', book_path)
         shutil.copy('cover_small.jpg', book_path)
+    elif os.path.exists('cover.png'):
+        shutil.copy('cover.png', book_path)
     else:
-        print('封面cover.jpg和cover_small.jpg文件不存在，如果需要生成封面，请把书对应的cover.jpg和cover_small.jpg放到脚本同一目录下。')
+        print('封面cover.png或cover.jpg与cover_small.jpg文件不存在，如果需要生成封面，请把书对应的封面文件放到脚本同一目录下。')
 
     print('现在开始将所有章节存入文件...')
     em.fetch_and_store_urls(book_path, urls)
@@ -520,9 +517,16 @@ def main():
     em.fetch_and_store_urls(book_path, em.missing_urls)
 
     # Use kaf-cli to convert ePub book
-    #em.merge_chapters(book_path)
-    #em.convert_by_kafcli('.', em.book_name[0], em.book_author[0], em.book_default_kafcli_bottom)
+    em.merge_chapters(book_path)
+    # TBD: vs code reg:
+    #   ”([^\n]).*? => "\n$1
+    #   (“.*?[^”]$)\n$ => $1"\n
+    #   " => ”
+    #   'i' => ''
+    #   &nbsp => ''
+    em.convert_by_kafcli(em.book_tool_base_dir, em.books_base_dir, em.book_name[0], em.book_author[0], em.book_default_kafcli_bottom)
 
+    '''
     # Use gitbook to build mobi book
     mh = MarkdownHelper()
     if mh.overwrite:
@@ -540,8 +544,8 @@ def main():
     readmeFile.close()
     mh.create_gitbook_book_json(book_path,em.book_name[0],em.book_author[0],em.book_description[0],'zh-hans')
     mh.convert_by_kindlegen(book_path)
-
     print('gitBook生成mobi文件完成！')
+    '''
 
 if __name__ == '__main__':
     main()
