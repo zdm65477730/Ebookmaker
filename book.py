@@ -418,6 +418,7 @@ class Ebookmaker(object):
         self.sem.release()
         if os.path.isfile(write_path):
             if os.path.getsize(write_path):
+                print("文件已缓存: {:<64}".format(urls[index][1]))
                 self.semaphore.release()
                 return
         with open(write_path, 'w+') as f:
