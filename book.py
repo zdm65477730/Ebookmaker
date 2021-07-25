@@ -4,7 +4,6 @@
 import re
 import os
 import time
-import error
 import random
 import requests
 import platform
@@ -415,7 +414,9 @@ class Ebookmaker(object):
     def work(self,base_path,index,urls,cookie=None,proxy_pool=None):
         self.semaphore.acquire()
         write_path = os.path.join(base_path, urls[index][1] + self.chapter_name_suffix)
-        self.chapter_dict[str(index+1)] = urls[index][1] + self.chapter_name_suffix
+        self.sem.acquire()
+        self.chapter_dict[index+1] = urls[index][1] + self.chapter_name_suffix
+        self.sem.release()
         if os.path.isfile(write_path):
             os.remove(write_path)
         with open(write_path, 'a+') as f:
