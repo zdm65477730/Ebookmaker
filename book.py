@@ -4,6 +4,7 @@
 import re
 import os
 import time
+import error
 import random
 import requests
 import platform
@@ -503,11 +504,13 @@ def main():
     em.create_book_store_dir(book_path)
 
     print('拷贝封面cover.jpg文件到当前目录...')
-    if os.path.exists('cover.jpg') and os.path.exists('cover_small.jpg'):
-        shutil.copy('cover.jpg', book_path)
-        shutil.copy('cover_small.jpg', book_path)
-    elif os.path.exists('cover.png'):
-        shutil.copy('cover.png', book_path)
+    if (os.path.exists('cover.jpg') and os.path.exists('cover_small.jpg')) or os.path.exists('cover.png'):
+        try:
+            shutil.copy('cover.jpg', book_path)
+            shutil.copy('cover_small.jpg', book_path)
+            shutil.copy('cover.png', book_path)
+        except Exception as e:
+            print(e)
     else:
         print('封面cover.png或cover.jpg与cover_small.jpg文件不存在，如果需要生成封面，请把书对应的封面文件放到脚本同一目录下。')
 
