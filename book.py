@@ -441,7 +441,7 @@ class Ebookmaker(object):
         if not os.path.isfile(kafcli_tool):
             print('kaf-cli工具不存在脚本所在文件夹！请放入后重试！')
         else:
-            kafcli_command = os.path.join(self.kafcli_tool_base_path, kafcli_tool) + ' -filename ' + os.path.join(self.book_info['ebooks_base_path'], self.book_info['book_name'], self.book_info['book_output_name']) + ' -bookname ' + self.book_info['book_name'] + ' -author ' + self.book_info['book_author'] + ' -cover ' + self.kafcli_book_cover + ' -bottom ' + self.kafcli_book_bottom
+            kafcli_command = os.path.join(self.kafcli_tool_base_path, kafcli_tool) + ' -filename ' + os.path.join(self.book_info['ebooks_labrary_path'], self.book_info['book_name'], self.book_info['book_output_name']) + ' -bookname ' + self.book_info['book_name'] + ' -author ' + self.book_info['book_author'] + ' -cover ' + self.kafcli_book_cover + ' -bottom ' + self.kafcli_book_bottom
             ret = subprocess.run(kafcli_command,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,encoding="utf-8",timeout=600)
             if ret.returncode != 0:
                 print('kaf-cli操作失败!',ret)
@@ -453,16 +453,19 @@ def main():
         'book_name': 'MyBook',
         'book_author': 'Ebookmaker',
         'book_description': 'Made by Ebookmaker!',
-        'ebooks_base_path':'.',
         'ebooks_labrary_path': os.path.join('.', 'ebooks'),
         'book_url': 'https://www.xbooktxt.net/2_2588/',                #https://www.xbiquge.la/66/66747/
         'book_host': 'www.xbooktxt.net',                               #www.xbiquge.la
         'book_referer': 'https://www.xbooktxt.net/2_2588/685752.html', #https://www.xbiquge.la/66/66747/26547971.html
         'book_cookie': 'UM_distinctid=17ac9cdf4d0d3f-09ee6521cf9cfd-6373264-384000-17ac9cdf4d1146c; CNZZDATA1266846634=2004344946-1626881060-https%3A%2F%2Fwww.baidu.com%2F|1626881060; hitbookid=2588; PPad_id_PP=5; hitme=2', #_abcde_qweasd=0; Hm_lvt_169609146ffe5972484b0957bd1b46d6=1626520436,1626585865; Hm_lpvt_169609146ffe5972484b0957bd1b46d6=1626597513
-        'book_chapter_name_format_begin': '#',                          #''
-        'book_chapter_name_format_end': ' #',                           #''
-        'book_chapter_file_suffic': '.md',                              #'.txt'
-        'book_output_name': 'outfile.md',                               #'outfile.txt'
+        #'book_chapter_name_format_begin': '# ',
+        #'book_chapter_name_format_end': ' #',
+        #'book_chapter_file_suffic': '.md',
+        #'book_output_name': 'outfile.md',
+        'book_chapter_name_format_begin': '',
+        'book_chapter_name_format_end': '',
+        'book_chapter_file_suffic': '.txt',
+        'book_output_name': 'outfile.txt',
         'book_name_re':re.compile(r'<meta property="og:novel:book_name" content="(.*?)"/>'),                           #re.compile(r'<meta property="og:name" content="(.*?)"/>')
         'book_description_re':re.compile(r'<meta property="og:description" content="(.*?)"/>'),                        #re.compile(r'<meta property="og:description" content="(.*?)"/>')
         'book_author_re':re.compile(r'<meta property="og:novel:author" content="(.*?)"/>'),                            #re.compile(r'<meta property="og:novel:author" content="(.*?)"/>')
@@ -482,10 +485,10 @@ def main():
     em.get_book_info()
     if not em.book_chapter_urls:
         return
-    book_path = os.path.join(em.book_info['ebooks_base_path'], em.book_info['book_name'])
+    book_path = os.path.join(em.book_info['ebooks_labrary_path'], em.book_info['book_name'])
     em.create_book_store_dir(book_path)
 
-    print('拷贝封面cover.jpg文件到当前目录...')
+    print('拷贝封面文件到当前目录...')
     if (os.path.exists('cover.jpg') and os.path.exists('cover_small.jpg')) or os.path.exists('cover.png'):
         try:
             shutil.copy('cover.jpg', book_path)
@@ -511,17 +514,16 @@ def main():
         &nbsp => ''
     '''
     em.merge_chapters(book_path)
-    em.convert_by_kafcli()
-
+    #em.convert_by_kafcli()
 
     # Use gitbook to build mobi book
-    gh = GitbookHelper(book_path, em.book_info['book_name'], em.book_info['book_author'], em.book_info['book_description'])
-    gh.convert(book_path)
+    #gh = GitbookHelper(book_path, em.book_info['book_name'], em.book_info['book_author'], em.book_info['book_description'])
+    #gh.convert(book_path)
 
     '''
     TBD: use ebook-convert cmdline to convert markdown file to mobi/azw3
-        https://bookfere.com/post/642.html
-        https://bookfere.com/post/82.html
+        pandoc -s --toc --toc-depth=4 --metadata title="武神主宰" 1.md -o 1.epub
+        pandoc --from=markdown --to=epub3 --verbose --standalone --table-of-contents --toc-depth=4 --epub-cover-image=cover.jpg --css=epub.css --metadata-file=metadata.yaml *.md -o 1.epub
         fmt.Print(fmt.Sprintf("ebook-convert %s %s --authors %s --comments '%s' --level1-toc '//h:h1' --level2-toc '//h:h2' --language '%s'\n", Tmp, Mobi, Author, Comment, Lang))
     '''
 
