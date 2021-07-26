@@ -458,14 +458,14 @@ def main():
         'book_host': 'www.xbooktxt.net',                               #www.xbiquge.la
         'book_referer': 'https://www.xbooktxt.net/2_2588/685752.html', #https://www.xbiquge.la/66/66747/26547971.html
         'book_cookie': 'UM_distinctid=17ac9cdf4d0d3f-09ee6521cf9cfd-6373264-384000-17ac9cdf4d1146c; CNZZDATA1266846634=2004344946-1626881060-https%3A%2F%2Fwww.baidu.com%2F|1626881060; hitbookid=2588; PPad_id_PP=5; hitme=2', #_abcde_qweasd=0; Hm_lvt_169609146ffe5972484b0957bd1b46d6=1626520436,1626585865; Hm_lpvt_169609146ffe5972484b0957bd1b46d6=1626597513
-        #'book_chapter_name_format_begin': '# ',
-        #'book_chapter_name_format_end': ' #',
-        #'book_chapter_file_suffic': '.md',
-        #'book_output_name': 'outfile.md',
-        'book_chapter_name_format_begin': '',
-        'book_chapter_name_format_end': '',
-        'book_chapter_file_suffic': '.txt',
-        'book_output_name': 'outfile.txt',
+        'book_chapter_name_format_begin': '# ',
+        'book_chapter_name_format_end': ' #',
+        'book_chapter_file_suffic': '.md',
+        'book_output_name': 'outfile.md',
+        #'book_chapter_name_format_begin': '',
+        #'book_chapter_name_format_end': '',
+        #'book_chapter_file_suffic': '.txt',
+        #'book_output_name': 'outfile.txt',
         'book_name_re':re.compile(r'<meta property="og:novel:book_name" content="(.*?)"/>'),                           #re.compile(r'<meta property="og:name" content="(.*?)"/>')
         'book_description_re':re.compile(r'<meta property="og:description" content="(.*?)"/>'),                        #re.compile(r'<meta property="og:description" content="(.*?)"/>')
         'book_author_re':re.compile(r'<meta property="og:novel:author" content="(.*?)"/>'),                            #re.compile(r'<meta property="og:novel:author" content="(.*?)"/>')
@@ -525,6 +525,20 @@ def main():
         pandoc -s --toc --toc-depth=4 --metadata title="武神主宰" 1.md -o 1.epub
         pandoc --from=markdown --to=epub3 --verbose --standalone --table-of-contents --toc-depth=4 --epub-cover-image=cover.jpg --css=epub.css --metadata-file=metadata.yaml *.md -o 1.epub
         fmt.Print(fmt.Sprintf("ebook-convert %s %s --authors %s --comments '%s' --level1-toc '//h:h1' --level2-toc '//h:h2' --language '%s'\n", Tmp, Mobi, Author, Comment, Lang))
+        ebook-convert 1.epub 1.mobi 
+            --authors "暗魔师" --input-profile=kindle --output-profile=kindle_pw3 --extra-css=default.css 
+            --expand-css --remove-paragraph-spacing-indent-size=2 --remove-first-image --chapter-mark=pagebreak 
+            --prefer-metadata-cover --insert-metadata --level1-toc=//h:h1 --level2-toc=//h:h2 --level3-toc=//h:h3
+            --max-toc-links=0 --use-auto-toc --formatting-type=markdown --mobi-toc-at-start
+            --title=""
+            --authors=""
+            --cover=cover.jpg
+            --comments=""
+            --publisher=""
+            --tags=""
+            --book-producer=""
+            --language=zh
+
     '''
 
 if __name__ == '__main__':
