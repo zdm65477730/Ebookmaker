@@ -5,9 +5,10 @@ title:
 creator:
 - role: author
   text: 暗魔师
-description: 天武大陆一代传奇秦尘，因好友背叛意外陨落武域。三百年后，他转生在一个受尽欺凌的王府私生子身上，利用前世造诣，凝神功、炼神丹，逆天而上，强势崛起，从此踏上一段震惊大陆的惊世之旅。
-rights: Commercial
-language: zh-cn
-stylesheet: epub.css
+publisher: ireader
+description: |
+    天武大陆一代传奇秦尘，因好友背叛意外陨落武域。三百年后，他转生在一个受尽欺凌的王府私生子身上，利用前世造诣，凝神功、炼神丹，逆天而上，强势崛起，从此踏上一段震惊大陆的惊世之旅。
+lang: zh_CN
 cover-image: cover.jpg
+css: kindle.css
 ...
