@@ -527,8 +527,8 @@ def main():
             --from=markdown \
             --to=epub3 \
             --atx-headers \
-            --variable=toc-title:"目录" \
-            --variable=number-sections:false \
+            --variable=toc-title="目录" \
+            --variable=number-sections=false \
             --variable=lang=zh_CN \
             --standalone \
             --wrap=preserve \
