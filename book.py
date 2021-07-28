@@ -362,6 +362,7 @@ class Ebookmaker(object):
         self.book_info['book_name'] = self.book_info['book_name_re'].findall(res)[0]
         self.book_info['book_description'] = self.book_info['book_description_re'].findall(res)[0]
         self.book_info['book_author'] = self.book_info['book_author_re'].findall(res)[0]
+        self.book_info['book_output_name'] = self.book_info['book_name'] + self.book_info['book_chapter_file_suffic']
         self.book_chapter_urls = self.book_info['book_chapter_list_reg'].findall(res)
         print("获取书籍信息：\n{}\n{}\n{}\n".format(self.book_info['book_name'],self.book_info['book_author'],self.book_info['book_description']))
 
@@ -377,7 +378,8 @@ class Ebookmaker(object):
                 self.semaphore.release()
                 return
         with open(write_path, 'w+') as f:
-            f.write(self.book_info['book_chapter_name_format_begin'] + urls[index][1] + self.book_info['book_chapter_name_format_end'] + '\n\n')
+            f.write(self.book_info['book_chapter_name_format_begin'] + urls[index][1] + '\n\n')
+            f.write('--------------------\n\n')
             chapter_html = self.loadData(self.book_info['book_url'] + urls[index][0], host=self.book_info['book_host'], referer=self.book_info['book_url'], cookie=cookie, proxy_pool=proxy_pool)
             if chapter_html == 'ERROR':
                 f.seek(0)
@@ -388,10 +390,8 @@ class Ebookmaker(object):
                 self.sem.release()
                 self.semaphore.release()
                 return
-            chapter_content = re.findall(self.book_info['book_chapter_content_reg'], chapter_html)
-            for content in chapter_content:
-                f.write(content + self.book_info['book_chapter_name_format_end'] + '\n')
-            f.write('\n')
+            for content in re.findall(self.book_info['book_chapter_content_reg'], chapter_html):
+                f.write(content + self.book_info['book_chapter_name_format_end'] + '\n\n')
             print("写入成功: {:<64}".format(urls[index][1]))
         self.semaphore.release()
 
@@ -412,8 +412,19 @@ class Ebookmaker(object):
         for t in work_threads:
             t.join()
 
-    def merge_chapters(self,dir):
-        print('合并所有章节...')
+    def write_md_title(self,dir):
+        print('写入标题和目录...')
+        path = os.path.join(dir, self.book_info['book_output_name'])
+        with open(path, 'w+') as f:
+            f.write('# 目录 \n\n')
+            f.write('--------------------\n\n')
+            for k in sorted(self.book_chapter_dict):
+                chapter_title = self.book_chapter_dict[k].split(self.book_info['book_chapter_file_suffic'])[0]
+                f.write('  - [' + chapter_title + '](#' + re.sub(' ', '-', chapter_title) + ')\n')
+            f.write('\n')
+
+    def write_md_chapters(self,dir):
+        print('写入所有章节...')
         res = ""
         for k in sorted(self.book_chapter_dict):
             file = self.book_chapter_dict[k]
@@ -421,13 +432,76 @@ class Ebookmaker(object):
                 path = os.path.join(dir,file)
                 with open(path, 'r', encoding='utf-8') as file:
                     content = file.read()
-                    file.close()
                 res += content
-        self.book_info['book_output_name'] = self.book_info['book_name'] + self.book_info['book_chapter_file_suffic']
         path = os.path.join(dir,self.book_info['book_output_name'])
-        with open(path, 'w', encoding='utf-8') as outFile:
-            outFile.write(res)
-            outFile.close()
+        with open(path, 'a+', encoding='utf-8') as f:
+            f.write(res)
+
+    def convert_by_pandoc(self,dir):
+        '''
+        pandoc -D markdown > modified.markdown
+        pandoc --template modified.markdown <... rest of your command ...>
+        pandoc -s --table-of-contents --toc-depth=4 --metadata title="武神主宰" 1.md -o 1.epub
+            --top-level-division=chapter \
+            --variable=toc-title='目录' \
+            --table-of-contents \
+            --toc-depth=3 \
+            --metadata-file=metadata.yml \
+        pandoc --from=markdown --to=markdown --standalone --table-of-contents --toc-depth=3 --variable=lang=zh_CN --metadata title="目录" 1.md -o 1_new.md
+        pandoc \
+            --from=markdown \
+            --to=epub3 \
+            --atx-headers \
+            --variable=lang=zh_CN \
+            --standalone \
+            --wrap=preserve \
+            --verbose \
+            --template=epub.template \
+            --metadata title="武神主宰" \
+            --metadata author="暗魔师" \
+            --metadata description="天武大陆一代传奇秦尘，因好友背叛意外陨落武域。" \
+            --metadata css=epub.css \
+            --metadata cover-image=cover.jpg \
+            --output=1.epub \
+            output.md
+        '''
+        print('转换为epub电子书格式...')
+        epub_output_path = os.path.join(dir, self.book_info['book_name'] + '.epub')
+        css_path = os.path.join(dir, 'epub.css')
+        cover_path = os.path.join(dir, 'cover.jpg')
+        templater_path = os.path.join(dir, 'epub.template')
+        pandoc_command = 'pandoc --from=markdown --to=epub3 --atx-headers --variable=lang=zh_CN --standalone --wrap=preserve --verbose ' + ' --template=' + templater_path + ' --metadata title=' + self.book_info['book_name'] + ' --metadata author=' + self.book_info['book_author'] + ' --metadata description=' + self.book_info['book_description'] + ' --metadata css=' + css_path + ' --metadata cover-image=' + cover_path + ' --output=' + epub_output_path + ' ' + os.path.join(dir, self.book_info['book_name'] + '.md')
+        ret = subprocess.run(pandoc_command,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,encoding="utf-8",timeout=1200)
+        if ret.returncode != 0:
+            print('pandoc操作失败!',ret)
+        else:
+            print('epub转换完成!!!')
+
+    def convert_by_ebook_convert(self,dir):
+        '''
+        TBD: use ebook-convert cmdline to convert markdown file to mobi/azw3
+        #fmt.Print(fmt.Sprintf("ebook-convert %s %s --authors %s --comments '%s' --level1-toc '//h:h1' --level2-toc '//h:h2' --language '%s'\n", Tmp, Mobi, Author, Comment, Lang))
+        ebook-convert 1.epub 1.mobi 
+            --authors "暗魔师" --input-profile=kindle --output-profile=kindle_pw3 --extra-css=default.css 
+            --expand-css --remove-paragraph-spacing-indent-size=2 --remove-first-image --chapter-mark=pagebreak 
+            --prefer-metadata-cover --insert-metadata --level1-toc=//h:h1 --level2-toc=//h:h2 --level3-toc=//h:h3
+            --max-toc-links=0 --use-auto-toc --formatting-type=markdown --mobi-toc-at-start
+            --title=""
+            --authors=""
+            --cover=cover.jpg
+            --comments=""
+            --publisher=""
+            --tags=""
+            --book-producer=""
+            --language=zh
+        '''
+        print('转换为azw3/mobi电子书格式...')
+        ebook_convert_command = 'ebook-convert ' + os.path.join(dir, self.book_info['book_name'] + '.epub') + ' ' + os.path.join(dir, self.book_info['book_name'] + '.azw3')
+        ret = subprocess.run(ebook_convert_command,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,encoding="utf-8",timeout=1200)
+        if ret.returncode != 0:
+            print('ebook_convert操作失败!',ret)
+        else:
+            print('azw3/mobi转换完成!!!')
 
     def convert_by_kafcli(self):
         print('转换为Kindle电子书格式...')
@@ -458,7 +532,7 @@ def main():
         'book_host': 'www.xbooktxt.net',                               #www.xbiquge.la
         'book_referer': 'https://www.xbooktxt.net/2_2588/685752.html', #https://www.xbiquge.la/66/66747/26547971.html
         'book_cookie': 'UM_distinctid=17ac9cdf4d0d3f-09ee6521cf9cfd-6373264-384000-17ac9cdf4d1146c; CNZZDATA1266846634=2004344946-1626881060-https%3A%2F%2Fwww.baidu.com%2F|1626881060; hitbookid=2588; PPad_id_PP=5; hitme=2', #_abcde_qweasd=0; Hm_lvt_169609146ffe5972484b0957bd1b46d6=1626520436,1626585865; Hm_lpvt_169609146ffe5972484b0957bd1b46d6=1626597513
-        'book_chapter_name_format_begin': '# ',
+        'book_chapter_name_format_begin': '## ',
         'book_chapter_name_format_end': '  ',
         'book_chapter_file_suffic': '.md',
         'book_output_name': 'outfile.md',
@@ -488,20 +562,43 @@ def main():
     book_path = os.path.join(em.book_info['ebooks_labrary_path'], em.book_info['book_name'])
     em.create_book_store_dir(book_path)
 
-    print('拷贝封面文件到当前目录...')
-    if (os.path.exists('cover.jpg') and os.path.exists('cover_small.jpg')) or os.path.exists('cover.png'):
+    print('拷贝封面文件到书籍生成目录...')
+    pandoc_cover_jpg = os.path.join('pandoc', 'cover.jpg')
+    pandoc_cover_png = os.path.join('pandoc', 'cover.png')
+    if os.path.exists(pandoc_cover_jpg) and os.path.exists(pandoc_cover_png):
         try:
-            shutil.copy('cover.jpg', book_path)
-            shutil.copy('cover_small.jpg', book_path)
-            shutil.copy('cover.png', book_path)
+            shutil.copy(pandoc_cover_jpg, book_path)
+            shutil.copy(pandoc_cover_png, book_path)
         except Exception as e:
             print(e)
     else:
-        print('封面cover.png或cover.jpg与cover_small.jpg文件不存在，如果需要生成封面，请把书对应的封面文件放到脚本同一目录下。')
+        print('封面cover.png与cover.jpg文件不存在，如果需要生成封面，请把书对应的封面文件放到脚本同一目录下。')
+
+    print('拷贝ePub样式文件到书籍生成目录...')
+    pandoc_css = os.path.join('pandoc', 'epub.css')
+    if os.path.exists(pandoc_css):
+        try:
+            shutil.copy(pandoc_css, book_path)
+        except Exception as e:
+            print(e)
+    else:
+        print('ePub样式文件epub.css不存在，请把该文件放到脚本同一目录下的pandoc目录下。')
+        return
+    
+    print('拷贝ePub模板文件到书籍生成目录...')
+    pandoc_template = os.path.join('pandoc', 'epub.template')
+    if os.path.exists(pandoc_template):
+        try:
+            shutil.copy(pandoc_template, book_path)
+        except Exception as e:
+            print(e)
+    else:
+        print('ePub模板文件epub.template不存在，请把该文件放到脚本同一目录下的pandoc目录下。')
+        return
 
     print('现在开始将所有章节存入文件...')
     em.fetch_and_store_urls(book_path, em.book_chapter_urls)
-    print('现在重新处理写入失败的章节...')
+    print('现在尝试重新处理写入失败的章节...')
     em.fetch_and_store_urls(book_path, em.missing_urls)
 
     # Use kaf-cli to convert ePub book
@@ -513,47 +610,15 @@ def main():
         'i' => ''
         &nbsp => ''
     '''
-    em.merge_chapters(book_path)
+    em.write_md_title(book_path)
+    em.write_md_chapters(book_path)
     #em.convert_by_kafcli()
+    em.convert_by_pandoc(book_path)
+    em.convert_by_ebook_convert(book_path)
 
     # Use gitbook to build mobi book
     #gh = GitbookHelper(book_path, em.book_info['book_name'], em.book_info['book_author'], em.book_info['book_description'])
-    #gh.convert(book_path)
-
-    '''
-    TBD: use ebook-convert cmdline to convert markdown file to mobi/azw3
-        pandoc -s --toc --toc-depth=4 --metadata title="武神主宰" 1.md -o 1.epub
-        pandoc \
-            --from=markdown \
-            --to=epub3 \
-            --atx-headers \
-            --variable=toc-title="目录" \
-            --variable=number-sections=false \
-            --variable=lang=zh_CN \
-            --standalone \
-            --wrap=preserve \
-            --verbose \
-            --table-of-contents \
-            --toc-depth=4 \
-            --metadata-file=metadata.yaml \
-            --output=1.epub \
-            *.md
-        #fmt.Print(fmt.Sprintf("ebook-convert %s %s --authors %s --comments '%s' --level1-toc '//h:h1' --level2-toc '//h:h2' --language '%s'\n", Tmp, Mobi, Author, Comment, Lang))
-        ebook-convert 1.epub 1.mobi 
-            --authors "暗魔师" --input-profile=kindle --output-profile=kindle_pw3 --extra-css=default.css 
-            --expand-css --remove-paragraph-spacing-indent-size=2 --remove-first-image --chapter-mark=pagebreak 
-            --prefer-metadata-cover --insert-metadata --level1-toc=//h:h1 --level2-toc=//h:h2 --level3-toc=//h:h3
-            --max-toc-links=0 --use-auto-toc --formatting-type=markdown --mobi-toc-at-start
-            --title=""
-            --authors=""
-            --cover=cover.jpg
-            --comments=""
-            --publisher=""
-            --tags=""
-            --book-producer=""
-            --language=zh
-
-    '''
+    #gh.convert(book_path)、
 
 if __name__ == '__main__':
     main()
