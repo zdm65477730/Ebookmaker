@@ -186,7 +186,7 @@ class GitbookHelper(object):
             lang = self.book_language
             if lang == 'zh-hans' or lang == 'zh-tw':
                 lang = 'zh'
-            kindlegen_command = os.path.join('.', kindlegen_tool) + ' ' + epub_path + '.epub' + ' -c1 -verbose -locale ' + lang + ' -o ' + epub_path + '.mobi'
+            kindlegen_command = os.path.join('tools', kindlegen_tool) + ' ' + epub_path + '.epub' + ' -c1 -verbose -locale ' + lang + ' -o ' + epub_path + '.mobi'
             ret = subprocess.run(kindlegen_command,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,encoding="utf-8",timeout=600)
             if ret.returncode != 0:
                 print('kindlegen命令操作失败：', kindlegen_command)
@@ -253,7 +253,7 @@ class Ebookmaker(object):
         self.kafcli_win = 'kaf-cli.exe'
         self.kafcli_book_bottom = '1'
         self.kafcli_book_cover = 'cover.png'
-        self.kafcli_tool_base_path = '.'
+        self.kafcli_tool_base_path = 'tools'
         ######################################################################################
         self.thread_num = 20
         self.ip_pool_web_num = 20
@@ -379,7 +379,8 @@ class Ebookmaker(object):
                 return
         with open(write_path, 'w+') as f:
             f.write(self.book_info['book_chapter_name_format_begin'] + urls[index][1] + '\n\n')
-            f.write('--------------------\n\n')
+            if self.book_info['book_chapter_name_format_begin'] == '## ':
+                f.write('--------------------\n\n')
             chapter_html = self.loadData(self.book_info['book_url'] + urls[index][0], host=self.book_info['book_host'], referer=self.book_info['book_url'], cookie=cookie, proxy_pool=proxy_pool)
             if chapter_html == 'ERROR':
                 f.seek(0)
@@ -391,7 +392,12 @@ class Ebookmaker(object):
                 self.semaphore.release()
                 return
             for content in re.findall(self.book_info['book_chapter_content_reg'], chapter_html):
-                f.write(content + self.book_info['book_chapter_name_format_end'] + '\n\n')
+                if self.book_info['book_chapter_name_format_begin'] == '## ':
+                    f.write(content + self.book_info['book_chapter_name_format_end'] + '\n\n')
+                else:
+                    f.write(content + self.book_info['book_chapter_name_format_end'] + '\n')
+            if self.book_info['book_chapter_name_format_begin'] == '## ':
+                f.write('\n')
             print("写入成功: {:<64}".format(urls[index][1]))
         self.semaphore.release()
 
@@ -423,7 +429,7 @@ class Ebookmaker(object):
                 f.write('  - [' + chapter_title + '](#' + re.sub(' ', '-', chapter_title) + ')\n')
             f.write('\n')
 
-    def write_md_chapters(self,dir):
+    def write_chapters(self,dir):
         print('写入所有章节...')
         res = ""
         for k in sorted(self.book_chapter_dict):
@@ -481,18 +487,18 @@ class Ebookmaker(object):
         '''
         TBD: use ebook-convert cmdline to convert markdown file to mobi/azw3
         #fmt.Print(fmt.Sprintf("ebook-convert %s %s --authors %s --comments '%s' --level1-toc '//h:h1' --level2-toc '//h:h2' --language '%s'\n", Tmp, Mobi, Author, Comment, Lang))
-        ebook-convert 1.epub 1.mobi 
-            --authors "暗魔师" --input-profile=kindle --output-profile=kindle_pw3 --extra-css=default.css 
-            --expand-css --remove-paragraph-spacing-indent-size=2 --remove-first-image --chapter-mark=pagebreak 
-            --prefer-metadata-cover --insert-metadata --level1-toc=//h:h1 --level2-toc=//h:h2 --level3-toc=//h:h3
-            --max-toc-links=0 --use-auto-toc --formatting-type=markdown --mobi-toc-at-start
-            --title=""
-            --authors=""
-            --cover=cover.jpg
-            --comments=""
-            --publisher=""
-            --tags=""
-            --book-producer=""
+        ebook-convert 1.epub 1.mobi \
+            --input-profile=kindle --output-profile=kindle_pw3 --extra-css=epub.css \
+            --expand-css --remove-paragraph-spacing-indent-size=2 --remove-first-image --chapter-mark=pagebreak \
+            --prefer-metadata-cover --insert-metadata --level1-toc=//h:h1 --level2-toc=//h:h2 --level3-toc=//h:h3 \
+            --max-toc-links=0 --use-auto-toc --mobi-toc-at-start --pretty-print \
+            --title="武神主宰" \
+            --authors="暗魔师" \
+            --cover=cover.jpg \
+            --comments="天武大陆一代传奇秦尘，因好友背叛意外陨落武域。三百年后，他转生在一个受尽欺凌的王府私生子身上，利用前世造诣，凝神功、炼神丹，逆天而上，强势崛起，从此踏上一段震惊大陆的惊世之旅。" \
+            --publisher="ireader" \
+            --tags="小说" \
+            --book-producer="越光" \
             --language=zh
         '''
         print('转换为azw3/mobi电子书格式...')
@@ -563,37 +569,37 @@ def main():
     em.create_book_store_dir(book_path)
 
     print('拷贝封面文件到书籍生成目录...')
-    pandoc_cover_jpg = os.path.join('pandoc', 'cover.jpg')
-    pandoc_cover_png = os.path.join('pandoc', 'cover.png')
-    if os.path.exists(pandoc_cover_jpg) and os.path.exists(pandoc_cover_png):
+    book_cover_jpg = os.path.join('data', 'cover.jpg')
+    book_cover_png = os.path.join('data', 'cover.png')
+    if os.path.exists(book_cover_jpg) and os.path.exists(book_cover_png):
         try:
-            shutil.copy(pandoc_cover_jpg, book_path)
-            shutil.copy(pandoc_cover_png, book_path)
+            shutil.copy(book_cover_jpg, book_path)
+            shutil.copy(book_cover_png, book_path)
         except Exception as e:
             print(e)
     else:
         print('封面cover.png与cover.jpg文件不存在，如果需要生成封面，请把书对应的封面文件放到脚本同一目录下。')
 
     print('拷贝ePub样式文件到书籍生成目录...')
-    pandoc_css = os.path.join('pandoc', 'epub.css')
-    if os.path.exists(pandoc_css):
+    book_epub_css = os.path.join('data', 'epub.css')
+    if os.path.exists(book_epub_css):
         try:
-            shutil.copy(pandoc_css, book_path)
+            shutil.copy(book_epub_css, book_path)
         except Exception as e:
             print(e)
     else:
-        print('ePub样式文件epub.css不存在，请把该文件放到脚本同一目录下的pandoc目录下。')
+        print('ePub样式文件epub.css不存在，请把该文件放到脚本同一目录下的data目录下。')
         return
-    
+
     print('拷贝ePub模板文件到书籍生成目录...')
-    pandoc_template = os.path.join('pandoc', 'epub.template')
-    if os.path.exists(pandoc_template):
+    book_epub_template = os.path.join('data', 'epub.template')
+    if os.path.exists(book_epub_template):
         try:
-            shutil.copy(pandoc_template, book_path)
+            shutil.copy(book_epub_template, book_path)
         except Exception as e:
             print(e)
     else:
-        print('ePub模板文件epub.template不存在，请把该文件放到脚本同一目录下的pandoc目录下。')
+        print('ePub模板文件epub.template不存在，请把该文件放到脚本同一目录下的data目录下。')
         return
 
     print('现在开始将所有章节存入文件...')
@@ -610,11 +616,13 @@ def main():
         'i' => ''
         &nbsp => ''
     '''
-    em.write_md_title(book_path)
-    em.write_md_chapters(book_path)
+    if em.book_info['book_chapter_name_format_begin'] == '## ':
+        em.write_md_title(book_path)
+    em.write_chapters(book_path)
     #em.convert_by_kafcli()
-    em.convert_by_pandoc(book_path)
-    em.convert_by_ebook_convert(book_path)
+    if em.book_info['book_chapter_name_format_begin'] == '## ':
+        em.convert_by_pandoc(book_path)
+        em.convert_by_ebook_convert(book_path)
 
     # Use gitbook to build mobi book
     #gh = GitbookHelper(book_path, em.book_info['book_name'], em.book_info['book_author'], em.book_info['book_description'])
