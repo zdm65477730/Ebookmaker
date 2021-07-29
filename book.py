@@ -426,7 +426,7 @@ class Ebookmaker(object):
             f.write('--------------------\n\n')
             for k in sorted(self.book_chapter_dict):
                 chapter_title = self.book_chapter_dict[k].split(self.book_info['book_chapter_file_suffic'])[0]
-                f.write('  - [' + chapter_title + '](#' + re.sub(' ', '-', chapter_title) + ')\n')
+                f.write('  - [' + chapter_title + '](#' + re.sub(' |？|，|！|……', '-', chapter_title) + ')\n')
             f.write('\n')
 
     def write_chapters(self,dir):
@@ -538,14 +538,14 @@ def main():
         'book_host': 'www.xbooktxt.net',                               #www.xbiquge.la
         'book_referer': 'https://www.xbooktxt.net/2_2588/685752.html', #https://www.xbiquge.la/66/66747/26547971.html
         'book_cookie': 'UM_distinctid=17ac9cdf4d0d3f-09ee6521cf9cfd-6373264-384000-17ac9cdf4d1146c; CNZZDATA1266846634=2004344946-1626881060-https%3A%2F%2Fwww.baidu.com%2F|1626881060; hitbookid=2588; PPad_id_PP=5; hitme=2', #_abcde_qweasd=0; Hm_lvt_169609146ffe5972484b0957bd1b46d6=1626520436,1626585865; Hm_lpvt_169609146ffe5972484b0957bd1b46d6=1626597513
-        'book_chapter_name_format_begin': '## ',
-        'book_chapter_name_format_end': '  ',
-        'book_chapter_file_suffic': '.md',
-        'book_output_name': 'outfile.md',
-        #'book_chapter_name_format_begin': '',
-        #'book_chapter_name_format_end': '',
-        #'book_chapter_file_suffic': '.txt',
-        #'book_output_name': 'outfile.txt',
+        #'book_chapter_name_format_begin': '## ',
+        #'book_chapter_name_format_end': '  ',
+        #'book_chapter_file_suffic': '.md',
+        #'book_output_name': 'outfile.md',
+        'book_chapter_name_format_begin': '',
+        'book_chapter_name_format_end': '',
+        'book_chapter_file_suffic': '.txt',
+        'book_output_name': 'outfile.txt',
         'book_name_re':re.compile(r'<meta property="og:novel:book_name" content="(.*?)"/>'),                           #re.compile(r'<meta property="og:name" content="(.*?)"/>')
         'book_description_re':re.compile(r'<meta property="og:description" content="(.*?)"/>'),                        #re.compile(r'<meta property="og:description" content="(.*?)"/>')
         'book_author_re':re.compile(r'<meta property="og:novel:author" content="(.*?)"/>'),                            #re.compile(r'<meta property="og:novel:author" content="(.*?)"/>')
@@ -626,7 +626,7 @@ def main():
 
     # Use gitbook to build mobi book
     #gh = GitbookHelper(book_path, em.book_info['book_name'], em.book_info['book_author'], em.book_info['book_description'])
-    #gh.convert(book_path)、
+    #gh.convert(book_path)
 
 if __name__ == '__main__':
     main()
