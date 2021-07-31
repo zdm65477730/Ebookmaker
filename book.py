@@ -3,8 +3,9 @@
 
 import re
 import os
-import time
+import datetime
 import random
+import hashlib
 import requests
 import platform
 import urllib3
@@ -12,6 +13,9 @@ import threading
 import subprocess
 import shutil
 import json
+import time
+import zipfile
+from xml.dom import minidom
 from urllib3.exceptions import InsecureRequestWarning
 from urllib import error
 #from bs4 import BeautifulSoup
@@ -46,7 +50,7 @@ class GitbookHelper(object):
             return 'book' 
 
     def mdfile_in_dir(self, dire):
-        for root, dirs, files in os.walk(dire):
+        for dirpath, dirs, files in os.walk(dire):
             for filename in files:
                 if re.search('.md$|.markdown$', filename):
                     return True
@@ -253,8 +257,14 @@ class Ebookmaker(object):
         self.kafcli_win = 'kaf-cli.exe'
         self.kafcli_book_bottom = '1'
         self.kafcli_book_cover = 'cover.png'
-        self.kafcli_tool_base_path = 'tools'
         ######################################################################################
+        self.kindlegen_linux = 'kindlegen'
+        self.kindlegen_mac = 'kindlegen-darwin'
+        self.kindlegen_win = 'kindlegen.exe'
+        self.kindlegen_book_compression_level = '1'
+        self.kindlegen_book_locale = 'zh'
+        ######################################################################################
+        self.tool_base_path = 'tools'
         self.thread_num = 20
         self.ip_pool_web_num = 20
         self.semaphore = threading.BoundedSemaphore(self.thread_num)
@@ -317,19 +327,27 @@ class Ebookmaker(object):
                 self.sem.acquire()
                 self.IP.append(ip)
                 self.sem.release()
+        if idx%50 != 0:
+            print("*", end='')
         self.semaphore.release()
 
-    def proxy_pool(self,ip):
+    def proxy_pool(self,idx):
         self.semaphore.acquire()
-        proxies = { "http" : "http://" + ip}
+        self.sem.acquire()
+        proxies = { "http" : "http://" + self.IP[idx]}
+        self.sem.release()
         proxy_pool_data = self.loadData(self.book_info['proxy_pool_url'], host=self.book_info['proxy_pool_host'], proxy_pool=proxies)
         if proxy_pool_data != 'ERROR':
             self.sem.acquire()
             self.proxyPool.append(proxies)
             self.sem.release()
+        if idx%50 != 0:
+            print("*", end='')
         self.semaphore.release()
 
     def get_ip_pool(self):
+        print('抓取代理IP池...')
+        time_start = datetime.datetime.now()
         ip_threads = []
         for idx in range(self.ip_pool_web_num):
             t = threading.Thread(target=self.ip_pool,args=(idx,))
@@ -339,22 +357,32 @@ class Ebookmaker(object):
             #    time.sleep(1)
         for t in ip_threads:
             t.join()
+        print('\n')
         new_list = list(set(self.IP))
         new_list.sort(key=self.IP.index)
         self.IP = new_list
-        print('代理IP池大小为{}'.format(len(self.IP)))
+        time_end = datetime.datetime.now()
+        print('代理IP池大小为{}，耗时：{}'.format(len(self.IP), time_end - time_start))
 
     def get_proxy_pool(self):
+        time_start = datetime.datetime.now()
         proxy_pool_threads = []
+        self.thread_num = len(self.IP)
+        print('线程数设置为：{}...'.format(self.thread_num))
+        self.semaphore = threading.BoundedSemaphore(self.thread_num)
         for idx in range(len(self.IP)):
-            t = threading.Thread(target=self.proxy_pool,args=(self.IP[idx],))
+            t = threading.Thread(target=self.proxy_pool,args=(idx,))
             t.start()
             proxy_pool_threads.append(t)
         for t in proxy_pool_threads:
             t.join()
-        print('筛选后的代理池大小为{}'.format(len(self.proxyPool)))
+        print('\n')
+        time_end = datetime.datetime.now()
+        print('筛选后的代理池大小为{}，耗时：{}'.format(len(self.proxyPool), time_end - time_start))
 
     def get_book_info(self):
+        print('获取书籍信息...')
+        time_start = datetime.datetime.now()
         res = self.loadData(self.book_info['book_url'], referer=self.book_info['book_referer'], host=self.book_info['book_host'])
         if res == 'ERROR':
             print("访问失败: {:<64}".format(self.book_info['book_url']))
@@ -362,15 +390,21 @@ class Ebookmaker(object):
         self.book_info['book_name'] = self.book_info['book_name_re'].findall(res)[0]
         self.book_info['book_description'] = self.book_info['book_description_re'].findall(res)[0]
         self.book_info['book_author'] = self.book_info['book_author_re'].findall(res)[0]
-        self.book_info['book_output_name'] = self.book_info['book_name'] + self.book_info['book_chapter_file_suffic']
+        if self.book_info['book_chapter_file_suffic'] == '.md':
+            self.book_info['book_output_name'] = self.book_info['book_name'] + '.md'
+        elif self.book_info['book_chapter_file_suffic'] == '.txt':
+            self.book_info['book_output_name'] = self.book_info['book_name'] + '.txt'
+        elif self.book_info['book_chapter_file_suffic'] == '.html':
+            self.book_info['book_output_name'] = self.book_info['book_name'] + '.epub'
         self.book_chapter_urls = self.book_info['book_chapter_list_reg'].findall(res)
-        print("获取书籍信息：\n{}\n{}\n{}\n".format(self.book_info['book_name'],self.book_info['book_author'],self.book_info['book_description']))
+        time_end = datetime.datetime.now()
+        print("完成！耗时：{}\n{}\n{}\n{}\n".format(time_end - time_start, self.book_info['book_name'],self.book_info['book_author'],self.book_info['book_description']))
 
     def work(self,base_path,index,urls,cookie=None,proxy_pool=None):
         self.semaphore.acquire()
-        write_path = os.path.join(base_path, urls[index][1] + self.book_info['book_chapter_file_suffic'])
+        write_path = os.path.join(base_path, 'chapter' + str(index+1) + self.book_info['book_chapter_file_suffic'])
         self.sem.acquire()
-        self.book_chapter_dict[index+1] = urls[index][1] + self.book_info['book_chapter_file_suffic']
+        self.book_chapter_dict[index+1] = urls[index][1]
         self.sem.release()
         if os.path.isfile(write_path):
             if os.path.getsize(write_path):
@@ -378,9 +412,36 @@ class Ebookmaker(object):
                 self.semaphore.release()
                 return
         with open(write_path, 'w+') as f:
-            f.write(self.book_info['book_chapter_name_format_begin'] + urls[index][1] + '\n\n')
-            if self.book_info['book_chapter_name_format_begin'] == '## ':
-                f.write('--------------------\n\n')
+            chapter_header = ''
+            chapter_bottom = ''
+            if self.book_info['book_chapter_file_suffic'] == ".html":
+                chapter_html_header = \
+"""<?xml version="1.0" encoding="utf-8" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang=""" + '\"' + self.book_info['book_language'] + '\">' + """
+<head>
+<meta http-equiv="Content-Type" content="application/xhtml+xml; charset=utf-8" />
+<meta name="generator" content="""  + '\"' + self.book_info['book_rights'] + '\" />\n<title>\nchapter ' + str(index+1) + """ - 0
+</title>
+<link rel="stylesheet" href="style.css" type="text/css"/>
+</head>
+<body>
+<a id="section" /><a ></a> <a id="article" /><a ></a>
+"""
+                chapter_header = chapter_html_header
+                chapter_bottom = \
+"""</body>
+</html>
+"""
+            if chapter_header != '':
+                f.write(chapter_header)
+            f.write(self.book_info['book_chapter_title_format_begin'] + urls[index][1] + self.book_info['book_chapter_title_format_end'])
+            if self.book_info['book_chapter_file_suffic'] == ".txt" or self.book_info['book_chapter_file_suffic'] == ".md":
+                f.write('\n\n')
+                if self.book_info['book_chapter_file_suffic'] == ".md":
+                    f.write('--------------------\n\n')
+            if self.book_info['book_chapter_file_suffic'] == ".html":
+                f.write('\n')
             chapter_html = self.loadData(self.book_info['book_url'] + urls[index][0], host=self.book_info['book_host'], referer=self.book_info['book_url'], cookie=cookie, proxy_pool=proxy_pool)
             if chapter_html == 'ERROR':
                 f.seek(0)
@@ -392,12 +453,13 @@ class Ebookmaker(object):
                 self.semaphore.release()
                 return
             for content in re.findall(self.book_info['book_chapter_content_reg'], chapter_html):
-                if self.book_info['book_chapter_name_format_begin'] == '## ':
-                    f.write(content + self.book_info['book_chapter_name_format_end'] + '\n\n')
-                else:
-                    f.write(content + self.book_info['book_chapter_name_format_end'] + '\n')
-            if self.book_info['book_chapter_name_format_begin'] == '## ':
-                f.write('\n')
+                f.write(self.book_info['book_chapter_text_format_begin'] + content + self.book_info['book_chapter_text_format_end'])
+                if self.book_info['book_chapter_file_suffic'] == ".md":
+                    f.write('\n\n')
+                elif self.book_info['book_chapter_file_suffic'] == ".txt" or self.book_info['book_chapter_file_suffic'] == ".html":
+                    f.write('\n')
+            if chapter_bottom != '':
+                f.write(chapter_bottom)
             print("写入成功: {:<64}".format(urls[index][1]))
         self.semaphore.release()
 
@@ -407,8 +469,11 @@ class Ebookmaker(object):
             os.makedirs(dir)
 
     def fetch_and_store_urls(self,dir,urls):
+        print('开始抓取并存入文件...')
+        time_start = datetime.datetime.now()
         work_threads = []
-        self.thread_num = 50
+        self.thread_num = len(self.proxyPool) * 10
+        print('线程数设置为：{}...'.format(self.thread_num))
         self.semaphore = threading.BoundedSemaphore(self.thread_num)
         chapter_len = len(urls)
         for idx in range(chapter_len):
@@ -417,31 +482,179 @@ class Ebookmaker(object):
             work_threads.append(t)
         for t in work_threads:
             t.join()
+        time_end = datetime.datetime.now()
+        print('完成！耗时：{}'.format(time_end - time_start))
+
+    def write_content_opf(self,dir):
+        print('写入content.opf...')
+        time_start = datetime.datetime.now()
+        xml_path = os.path.join(dir, 'OEBPS', 'content.opf')
+        xml = minidom.parse(xml_path)
+        package = xml.documentElement
+        metadata = package.getElementsByTagName('metadata')[0]
+        metadata.getElementsByTagName('dc:identifier')[0].firstChild.data = 'Ebookmaker-' + hashlib.md5(self.book_info['book_name'].encode(encoding='UTF-8')).hexdigest()[0:7]
+        metadata.getElementsByTagName('dc:title')[0].firstChild.data = self.book_info['book_name']
+        metadata.getElementsByTagName('dc:creator')[0].firstChild.data = self.book_info['book_author']
+        metadata.getElementsByTagName('dc:publisher')[0].firstChild.data = self.book_info['book_publisher']
+        metadata.getElementsByTagName('dc:rights')[0].firstChild.data = self.book_info['book_rights']
+        metadata.getElementsByTagName('dc:language')[0].firstChild.data = self.book_info['book_language']
+        metadata.getElementsByTagName('dc:subject')[0].firstChild.data = self.book_info['book_subject']
+        metadata.getElementsByTagName('dc:description')[0].firstChild.data = self.book_info['book_description']
+        manifest = package.getElementsByTagName('manifest')[0]
+        for chapter_index in sorted(self.book_chapter_dict):
+            chapter_item = xml.createElement('item')
+            manifest.appendChild(chapter_item)
+            chapter_item.setAttribute('id', 'chapter' + str(chapter_index))
+            chapter_item.setAttribute('href', 'chapter' + str(chapter_index) + '.html')
+            chapter_item.setAttribute('media-type', 'application/xhtml+xml')
+        spine = package.getElementsByTagName('spine')[0]
+        for chapter_index in sorted(self.book_chapter_dict):
+            chapter_item = xml.createElement('itemref')
+            spine.appendChild(chapter_item)
+            chapter_item.setAttribute('idref', 'chapter' + str(chapter_index))
+            chapter_item.setAttribute('linear', 'yes')
+        with open(xml_path, 'w', encoding='utf-8') as f:
+            xml.writexml(f, indent='\t', addindent='\t', encoding='utf-8')
+        time_end = datetime.datetime.now()
+        print('完成！耗时：{}'.format(time_end - time_start))
+
+    def write_toc_ncx(self,dir):
+        print('写入toc.ncx...')
+        time_start = datetime.datetime.now()
+        xml_path = os.path.join(dir, 'OEBPS', 'toc.ncx')
+        xml = minidom.parse(xml_path)
+        ncx = xml.documentElement
+        head = ncx.getElementsByTagName('head')[0]
+        metas = head.getElementsByTagName('meta')
+        for meta in metas:
+            if meta.getAttribute('name') == 'dtb:uid':
+                meta.setAttribute('content', 'Ebookmaker-' + hashlib.md5(self.book_info['book_name'].encode(encoding='UTF-8')).hexdigest()[0:7])
+        docTitle = ncx.getElementsByTagName('docTitle')[0]
+        docTitle_text = docTitle.getElementsByTagName('text')[0]
+        docTitle_text.data = self.book_info['book_name']
+        docAuthor = ncx.getElementsByTagName('docAuthor')[0]
+        docAuthor_text = docAuthor.getElementsByTagName('text')[0]
+        docAuthor_text.data = self.book_info['book_author']
+
+        navMap = ncx.getElementsByTagName('navMap')[0]
+        for chapter_index in sorted(self.book_chapter_dict):
+            navPoint = xml.createElement('navPoint')
+            navMap.appendChild(navPoint)
+            navPoint.setAttribute('id', 'chapter' + str(chapter_index))
+            navPoint.setAttribute('playOrder', str(chapter_index))
+            navPoint_navLabel = xml.createElement('navLabel')
+            navPoint.appendChild(navPoint_navLabel)
+            navPoint_navLabel_text = xml.createElement('text')
+            navPoint_navLabel.appendChild(navPoint_navLabel_text)
+            navPoint_navLabel_text_title = xml.createTextNode(self.book_chapter_dict[chapter_index])
+            navPoint_navLabel_text.appendChild(navPoint_navLabel_text_title)
+            navPoint_content = xml.createElement('content')
+            navPoint.appendChild(navPoint_content)
+            navPoint_content.setAttribute('src', 'chapter' + str(chapter_index) + '.html')
+        with open(xml_path, 'w', encoding='utf-8') as f:
+            xml.writexml(f, indent='\t', addindent='\t', encoding='utf-8')
+        time_end = datetime.datetime.now()
+        print('完成！耗时：{}'.format(time_end - time_start))
+
+    def write_cover_html(self,dir):
+        print('写入cover.html...')
+        time_start = datetime.datetime.now()
+        xml_path = os.path.join(dir, 'OEBPS', 'cover.html')
+        xml = minidom.parse(xml_path)
+        html = xml.documentElement
+        body = html.getElementsByTagName('body')[0]
+        divs = body.getElementsByTagName('div')
+        for div in divs:
+            if div.getAttribute('class') == 'container':
+                table = div.getElementsByTagName('table')[0]
+                tr = table.getElementsByTagName('tr')[0]
+                td = tr.getElementsByTagName('td')[0]
+                img = td.getElementsByTagName('img')[0]
+                img.setAttribute('alt', self.book_info['book_name'])
+        with open(xml_path, 'w', encoding='utf-8') as f:
+            xml.writexml(f, indent='\t', addindent='\t', encoding='utf-8')
+        time_end = datetime.datetime.now()
+        print('完成！耗时：{}'.format(time_end - time_start))
+
+    def write_book_toc_html(self,dir):
+        print('写入book-toc.html...')
+        time_start = datetime.datetime.now()
+        xml_path = os.path.join(dir, 'OEBPS', 'book-toc.html')
+        xml = minidom.parse(xml_path)
+        html = xml.documentElement
+        html.setAttribute('xml:lang', self.book_info['book_language'])
+        html_head = html.getElementsByTagName('head')[0]
+        html_head_metas = html_head.getElementsByTagName('meta')
+        for meta in html_head_metas:
+            if meta.hasAttribute('name'):
+                meta.setAttribute('content', self.book_info['book_rights'])
+        html_body = html.getElementsByTagName('body')[0]
+        html_body_div = html_body.getElementsByTagName('div')[0]
+        html_body_div_dl = html_body_div.getElementsByTagName('dl')[0]
+        for chapter_index in sorted(self.book_chapter_dict):
+            html_body_div_dl_dt = xml.createElement('dt')
+            html_body_div_dl.appendChild(html_body_div_dl_dt)
+            html_body_div_dl_dt.setAttribute('class', 'tocl2')
+            html_body_div_dl_dt_a = xml.createElement('a')
+            html_body_div_dl_dt.appendChild(html_body_div_dl_dt_a)
+            html_body_div_dl_dt_a_text = xml.createTextNode(self.book_chapter_dict[chapter_index])
+            html_body_div_dl_dt_a.appendChild(html_body_div_dl_dt_a_text)
+            html_body_div_dl_dt_a.setAttribute('href', 'chapter' + str(chapter_index) + '.html')
+        with open(xml_path, 'w', encoding='utf-8') as f:
+            xml.writexml(f, indent='\t', addindent='\t', encoding='utf-8')
+        time_end = datetime.datetime.now()
+        print('完成！耗时：{}'.format(time_end - time_start))
+
+    def create_epub(self,dir):
+        print('生成epub文件...')
+        time_start = datetime.datetime.now()
+        meta_inf_path = os.path.join(dir, 'META-INF')
+        oebps_path = os.path.join(dir, 'OEBPS')
+        mimetype_path = os.path.join(dir, 'mimetype')
+        epub_path = os.path.join(dir, self.book_info['book_output_name'])
+        if not os.path.exists(meta_inf_path) or not os.path.exists(oebps_path) or not os.path.exists(mimetype_path):
+            print("创建ePub失败！META-INF, OEBPS或mimetype不存在。")
+            return
+        time_start = datetime.datetime.now()
+        zfile = zipfile.ZipFile(epub_path, 'w', zipfile.ZIP_DEFLATED)
+        for epubdir in [meta_inf_path, oebps_path]:
+            for dirpath, dirs, files in os.walk(epubdir):
+                for file in files:
+                    zfile.write(os.path.join(dirpath, file))
+        zfile.write(mimetype_path)
+        zfile.close()
+        time_end = datetime.datetime.now()
+        print('完成！耗时：{}'.format(time_end - time_start))
 
     def write_md_title(self,dir):
         print('写入标题和目录...')
+        time_start = datetime.datetime.now()
         path = os.path.join(dir, self.book_info['book_output_name'])
         with open(path, 'w+') as f:
             f.write('# 目录 \n\n')
             f.write('--------------------\n\n')
-            for k in sorted(self.book_chapter_dict):
-                chapter_title = self.book_chapter_dict[k].split(self.book_info['book_chapter_file_suffic'])[0]
+            for chapter_index in sorted(self.book_chapter_dict):
+                chapter_title = self.book_chapter_dict[chapter_index]
                 f.write('  - [' + chapter_title + '](#' + re.sub(' |？|，|！|……', '-', chapter_title) + ')\n')
             f.write('\n')
+        time_end = datetime.datetime.now()
+        print('完成！耗时：{}'.format(time_end - time_start))
 
     def write_chapters(self,dir):
         print('写入所有章节...')
+        time_start = datetime.datetime.now()
         res = ""
-        for k in sorted(self.book_chapter_dict):
-            file = self.book_chapter_dict[k]
-            if file.endswith(self.book_info['book_chapter_file_suffic']):
-                path = os.path.join(dir,file)
-                with open(path, 'r', encoding='utf-8') as file:
-                    content = file.read()
-                res += content
+        for chapter_index in sorted(self.book_chapter_dict):
+            file = self.book_chapter_dict[chapter_index] + self.book_info['book_chapter_file_suffic']
+            path = os.path.join(dir, file)
+            with open(path, 'r', encoding='utf-8') as file:
+                content = file.read()
+            res += content
         path = os.path.join(dir,self.book_info['book_output_name'])
         with open(path, 'a+', encoding='utf-8') as f:
             f.write(res)
+        time_end = datetime.datetime.now()
+        print('完成！耗时：{}'.format(time_end - time_start))
 
     def convert_by_pandoc(self,dir):
         '''
@@ -456,7 +669,7 @@ class Ebookmaker(object):
         pandoc --from=markdown --to=markdown --standalone --table-of-contents --toc-depth=3 --variable=lang=zh_CN --metadata title="目录" 1.md -o 1_new.md
         pandoc \
             --from=markdown \
-            --to=epub3 \
+            --to=epub \
             --atx-headers \
             --variable=lang=zh_CN \
             --standalone \
@@ -472,16 +685,18 @@ class Ebookmaker(object):
             output.md
         '''
         print('转换为epub电子书格式...')
+        time_start = datetime.datetime.now()
         epub_output_path = os.path.join(dir, self.book_info['book_name'] + '.epub')
         css_path = os.path.join(dir, 'epub.css')
         cover_path = os.path.join(dir, 'cover.jpg')
         templater_path = os.path.join(dir, 'epub.template')
         pandoc_command = 'pandoc --from=markdown --to=epub3 --atx-headers --variable=lang=zh_CN --standalone --wrap=preserve --verbose ' + ' --template=' + templater_path + ' --metadata title=' + self.book_info['book_name'] + ' --metadata author=' + self.book_info['book_author'] + ' --metadata description=' + self.book_info['book_description'] + ' --metadata css=' + css_path + ' --metadata cover-image=' + cover_path + ' --output=' + epub_output_path + ' ' + os.path.join(dir, self.book_info['book_name'] + '.md')
         ret = subprocess.run(pandoc_command,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,encoding="utf-8",timeout=1200)
+        time_end = datetime.datetime.now()
         if ret.returncode != 0:
-            print('pandoc操作失败!',ret)
+            print('失败! 耗时：{}\n{}\n'.format(time_end - time_start, ret))
         else:
-            print('epub转换完成!!!')
+            print('完成！耗时：{}'.format(time_end - time_start))
 
     def convert_by_ebook_convert(self,dir):
         '''
@@ -502,15 +717,18 @@ class Ebookmaker(object):
             --language=zh
         '''
         print('转换为azw3/mobi电子书格式...')
+        time_start = datetime.datetime.now()
         ebook_convert_command = 'ebook-convert ' + os.path.join(dir, self.book_info['book_name'] + '.epub') + ' ' + os.path.join(dir, self.book_info['book_name'] + '.azw3')
         ret = subprocess.run(ebook_convert_command,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,encoding="utf-8",timeout=1200)
+        time_end = datetime.datetime.now()
         if ret.returncode != 0:
-            print('ebook_convert操作失败!',ret)
+            print('失败! 耗时：{}\n{}\n'.format(time_end - time_start, ret))
         else:
-            print('azw3/mobi转换完成!!!')
+            print('完成！耗时：{}'.format(time_end - time_start))
 
-    def convert_by_kafcli(self):
+    def convert_by_kafcli(dir,self):
         print('转换为Kindle电子书格式...')
+        time_start = datetime.datetime.now()
         sysstr = platform.system()
         if (sysstr == "Windows"):
             kafcli_tool = self.kafcli_win
@@ -518,34 +736,71 @@ class Ebookmaker(object):
             kafcli_tool = self.kafcli_linux
         elif (sysstr == "Mac"):
             kafcli_tool = self.kafcli_mac
+        kafcli_tool = os.path.join(self.tool_base_path, kafcli_tool)
         if not os.path.isfile(kafcli_tool):
-            print('kaf-cli工具不存在脚本所在文件夹！请放入后重试！')
+            print('kaf-cli工具不存在脚本同目录下tools所在文件夹！请放入后重试！')
         else:
-            kafcli_command = os.path.join(self.kafcli_tool_base_path, kafcli_tool) + ' -filename ' + os.path.join(self.book_info['ebooks_labrary_path'], self.book_info['book_name'], self.book_info['book_output_name']) + ' -bookname ' + self.book_info['book_name'] + ' -author ' + self.book_info['book_author'] + ' -cover ' + self.kafcli_book_cover + ' -bottom ' + self.kafcli_book_bottom
-            ret = subprocess.run(kafcli_command,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,encoding="utf-8",timeout=600)
+            kafcli_command = kafcli_tool + ' -filename ' + os.path.join(dir, self.book_info['book_output_name']) + ' -bookname ' + self.book_info['book_name'] + ' -author ' + self.book_info['book_author'] + ' -cover ' + self.kafcli_book_cover + ' -bottom ' + self.kafcli_book_bottom
+            ret = subprocess.run(kafcli_command,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,encoding="utf-8",timeout=1200)
+            time_end = datetime.datetime.now()
             if ret.returncode != 0:
-                print('kaf-cli操作失败!',ret)
+                print('失败! 耗时：{}\n{}\n'.format(time_end - time_start, ret))
             else:
-                print('所有操作都已经完成!!!')
+                print('完成！耗时：{}'.format(time_end - time_start))
+
+    def convert_by_kindlegen(self,dir):
+        print('转换为Kindle电子书格式...')
+        time_start = datetime.datetime.now()
+        sysstr = platform.system()
+        if (sysstr == "Windows"):
+            kindlegen_tool = self.kindlegen_win
+        elif (sysstr == "Linux"):
+            kindlegen_tool = self.kindlegen_linux
+        elif (sysstr == "Mac"):
+            kindlegen_tool = self.kindlegen_mac
+        kindlegen_tool = os.path.join(self.tool_base_path, kindlegen_tool)
+        if not os.path.isfile(kindlegen_tool):
+            print('kindlegen工具不存在脚本同目录下tools所在文件夹！请放入后重试！')
+        else:
+            epub_path = os.path.join(dir, self.book_info['book_output_name'])
+            output_path = self.book_info['book_name'] + '.mobi'
+            kindlegen_command = kindlegen_tool + ' ' + epub_path + ' -verbose -c' + self.kindlegen_book_compression_level + ' -locale ' + self.kindlegen_book_locale + ' -o ' + output_path
+            ret = subprocess.run(kindlegen_command,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,encoding="utf-8",timeout=1200)
+            time_end = datetime.datetime.now()
+            if ret.returncode != 0:
+                print('失败! 耗时：{}\n{}\n'.format(time_end - time_start, ret))
+            else:
+                print('完成！耗时：{}'.format(time_end - time_start))
+
+def copy_dir(src_path, dest_path):
+    if src_path == dest_path:
+        return
+    if os.path.isfile(src_path):
+        if os.path.exists(dest_path):
+            os.remove(dest_path)
+        shutil.copy(src_path, dest_path)
+    elif os.path.isdir(src_path):
+        if not os.path.exists(dest_path):
+            os.makedirs(dest_path)
+        for file in os.listdir(src_path):
+            copy_dir(os.path.join(src_path, file), os.path.join(dest_path, file))
 
 def main():
     book_info = {
         'book_name': 'MyBook',
         'book_author': 'Ebookmaker',
+        'book_publisher': 'Ebookmaker',
+        'book_rights': 'Created with Ebookmaker v1.0',
+        'book_language': 'zh-CN',
+        'book_subject': '小说',
         'book_description': 'Made by Ebookmaker!',
         'ebooks_labrary_path': os.path.join('.', 'ebooks'),
         'book_url': 'https://www.xbooktxt.net/2_2588/',                #https://www.xbiquge.la/66/66747/
         'book_host': 'www.xbooktxt.net',                               #www.xbiquge.la
         'book_referer': 'https://www.xbooktxt.net/2_2588/685752.html', #https://www.xbiquge.la/66/66747/26547971.html
         'book_cookie': 'UM_distinctid=17ac9cdf4d0d3f-09ee6521cf9cfd-6373264-384000-17ac9cdf4d1146c; CNZZDATA1266846634=2004344946-1626881060-https%3A%2F%2Fwww.baidu.com%2F|1626881060; hitbookid=2588; PPad_id_PP=5; hitme=2', #_abcde_qweasd=0; Hm_lvt_169609146ffe5972484b0957bd1b46d6=1626520436,1626585865; Hm_lpvt_169609146ffe5972484b0957bd1b46d6=1626597513
-        #'book_chapter_name_format_begin': '## ',
-        #'book_chapter_name_format_end': '  ',
-        #'book_chapter_file_suffic': '.md',
-        #'book_output_name': 'outfile.md',
-        'book_chapter_name_format_begin': '',
-        'book_chapter_name_format_end': '',
-        'book_chapter_file_suffic': '.txt',
-        'book_output_name': 'outfile.txt',
+        'book_chapter_file_suffic': '.html',
+        'book_output_name': 'outfile.tmp',
         'book_name_re':re.compile(r'<meta property="og:novel:book_name" content="(.*?)"/>'),                           #re.compile(r'<meta property="og:name" content="(.*?)"/>')
         'book_description_re':re.compile(r'<meta property="og:description" content="(.*?)"/>'),                        #re.compile(r'<meta property="og:description" content="(.*?)"/>')
         'book_author_re':re.compile(r'<meta property="og:novel:author" content="(.*?)"/>'),                            #re.compile(r'<meta property="og:novel:author" content="(.*?)"/>')
@@ -559,6 +814,22 @@ def main():
         'proxy_pool_host': 'httpbin.org'
     }
 
+    if book_info['book_chapter_file_suffic'] == ".md":
+        book_info['book_chapter_title_format_begin'] = '## '
+        book_info['book_chapter_title_format_end'] = '  '
+        book_info['book_chapter_text_format_begin'] = ''
+        book_info['book_chapter_text_format_end'] = ''
+    elif book_info['book_chapter_file_suffic'] == ".txt":
+        book_info['book_chapter_title_format_begin'] = ''
+        book_info['book_chapter_title_format_end'] = ''
+        book_info['book_chapter_text_format_begin'] = ''
+        book_info['book_chapter_text_format_end'] = ''
+    elif book_info['book_chapter_file_suffic'] == ".html":
+        book_info['book_chapter_title_format_begin'] = """<h2 id="title" class="titlel2std">"""
+        book_info['book_chapter_title_format_end'] = '</h2>'
+        book_info['book_chapter_text_format_begin'] = """<p class="a">"""
+        book_info['book_chapter_text_format_end'] = '</p>'
+
     em = Ebookmaker(book_info)
     em.get_ip_pool()
     em.get_proxy_pool()
@@ -568,44 +839,16 @@ def main():
     book_path = os.path.join(em.book_info['ebooks_labrary_path'], em.book_info['book_name'])
     em.create_book_store_dir(book_path)
 
-    print('拷贝封面文件到书籍生成目录...')
-    book_cover_jpg = os.path.join('data', 'cover.jpg')
-    book_cover_png = os.path.join('data', 'cover.png')
-    if os.path.exists(book_cover_jpg) and os.path.exists(book_cover_png):
-        try:
-            shutil.copy(book_cover_jpg, book_path)
-            shutil.copy(book_cover_png, book_path)
-        except Exception as e:
-            print(e)
-    else:
-        print('封面cover.png与cover.jpg文件不存在，如果需要生成封面，请把书对应的封面文件放到脚本同一目录下。')
+    print('拷贝模板文件到书籍生成目录...')
+    copy_dir('template', book_path)
 
-    print('拷贝ePub样式文件到书籍生成目录...')
-    book_epub_css = os.path.join('data', 'epub.css')
-    if os.path.exists(book_epub_css):
-        try:
-            shutil.copy(book_epub_css, book_path)
-        except Exception as e:
-            print(e)
-    else:
-        print('ePub样式文件epub.css不存在，请把该文件放到脚本同一目录下的data目录下。')
-        return
-
-    print('拷贝ePub模板文件到书籍生成目录...')
-    book_epub_template = os.path.join('data', 'epub.template')
-    if os.path.exists(book_epub_template):
-        try:
-            shutil.copy(book_epub_template, book_path)
-        except Exception as e:
-            print(e)
-    else:
-        print('ePub模板文件epub.template不存在，请把该文件放到脚本同一目录下的data目录下。')
-        return
-
-    print('现在开始将所有章节存入文件...')
-    em.fetch_and_store_urls(book_path, em.book_chapter_urls)
-    print('现在尝试重新处理写入失败的章节...')
-    em.fetch_and_store_urls(book_path, em.missing_urls)
+    print('将所有章节存入文件...')
+    book_chapters_path = book_path
+    if book_info['book_chapter_file_suffic'] == ".html":
+        book_chapters_path = os.path.join(book_path, 'OEBPS')
+    em.fetch_and_store_urls(book_chapters_path, em.book_chapter_urls)
+    print('尝试重新处理写入失败的章节...')
+    em.fetch_and_store_urls(book_chapters_path, em.missing_urls)
 
     # Use kaf-cli to convert ePub book
     '''
@@ -614,15 +857,26 @@ def main():
         (“.*?[^”]$)\n$ => $1"\n
         " => ”
         'i' => ''
+        ，; => '，'
+        ”\n， => ”，
         &nbsp => ''
     '''
-    if em.book_info['book_chapter_name_format_begin'] == '## ':
+    if book_info['book_chapter_file_suffic'] == ".md":
         em.write_md_title(book_path)
-    em.write_chapters(book_path)
-    #em.convert_by_kafcli()
-    if em.book_info['book_chapter_name_format_begin'] == '## ':
+        em.write_chapters(book_path)
+        #em.convert_by_kafcli(book_path)
         em.convert_by_pandoc(book_path)
         em.convert_by_ebook_convert(book_path)
+    elif book_info['book_chapter_file_suffic'] == ".txt":
+        em.write_chapters(book_path)
+        #em.convert_by_kafcli(book_path)
+    elif book_info['book_chapter_file_suffic'] == ".html":
+        em.write_content_opf(book_path)
+        em.write_toc_ncx(book_path)
+        em.write_cover_html(book_path)
+        em.write_book_toc_html(book_path)
+        em.create_epub(book_path)
+        em.convert_by_kindlegen(book_path)
 
     # Use gitbook to build mobi book
     #gh = GitbookHelper(book_path, em.book_info['book_name'], em.book_info['book_author'], em.book_info['book_description'])
