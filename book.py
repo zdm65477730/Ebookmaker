@@ -377,9 +377,7 @@ class Ebookmaker(object):
             ip_threads.append(t)
             #if idx%self.thread_num == 0:
             #    time.sleep(1)
-        for t in ip_threads:
-            t.join()
-        print('\n')
+        wait_all_child_task_done(ip_threads)
         new_list = list(set(self.IP))
         new_list.sort(key=self.IP.index)
         self.IP = new_list
@@ -396,9 +394,7 @@ class Ebookmaker(object):
             t = threading.Thread(target=self.proxy_pool,args=(idx,))
             t.start()
             proxy_pool_threads.append(t)
-        for t in proxy_pool_threads:
-            t.join()
-        print('\n')
+        wait_all_child_task_done(proxy_pool_threads)
         time_end = datetime.datetime.now()
         print('筛选后的代理池大小为{}，耗时：{}'.format(len(self.proxyPool), time_end - time_start))
 
@@ -488,7 +484,7 @@ class Ebookmaker(object):
                     f.write('\n')
             if chapter_bottom != '':
                 f.write(chapter_bottom)
-            print("写入成功: {:<64}".format(urls[index][1]))
+            #print("写入成功: {:<64}".format(urls[index][1]))
         self.semaphore.release()
 
     def create_book_store_dir(self,dir):
@@ -508,8 +504,7 @@ class Ebookmaker(object):
             t = threading.Thread(target=self.work,args=(dir,idx,urls,None,self.proxyPool[random.randint(0,len(self.proxyPool)-1)]))
             t.start()
             work_threads.append(t)
-        for t in work_threads:
-            t.join()
+        wait_all_child_task_done(work_threads)
         time_end = datetime.datetime.now()
         print('完成！耗时：{}'.format(time_end - time_start))
 
@@ -824,6 +819,22 @@ class Ebookmaker(object):
                 print('失败! 耗时：{}\n{}\n'.format(time_end - time_start, ret.returncode))
             else:
                 print('完成！耗时：{}'.format(time_end - time_start))
+
+def wait_all_child_task_done(thread_list):
+    cnt = 0
+    while True:
+        cnt += 1
+        for t in thread_list:
+            if not t.is_alive():
+                thread_list.remove(t)
+        if len(thread_list) == 0:
+            print('')
+            break
+        else:
+            print('*', end='', flush=True)
+            if cnt%50 == 0:
+                print('')
+            time.sleep(0.5)
 
 def copy_dir(src_path, dest_path):
     if src_path == dest_path:
