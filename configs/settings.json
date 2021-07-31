@@ -8,6 +8,10 @@
     "book_referer": "https://www.xbooktxt.net/2_2588/685752.html",
     "book_cookie": "UM_distinctid=17ac9cdf4d0d3f-09ee6521cf9cfd-6373264-384000-17ac9cdf4d1146c; CNZZDATA1266846634=2004344946-1626881060-https%3A%2F%2Fwww.baidu.com%2F|1626881060; hitbookid=2588; PPad_id_PP=5; hitme=2",
     "book_chapter_file_suffic": ".html",
+    "book_chapter_title_format_begin": "<h2 id=\"title\" class=\"titlel2std\">",
+    "book_chapter_title_format_end": "</h2>",
+    "book_chapter_text_format_begin": "<p class=\"a\">",
+    "book_chapter_text_format_end": "</p>",
     "book_name_re": "<meta property=\"og:novel:book_name\" content=\"(.*?)\"/>",
     "book_author_re": "<meta property=\"og:novel:author\" content=\"(.*?)\"/>",
     "book_date_re": "<meta property=\"og:novel:update_time\" content=\"(2\\d{3}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2})\"/>",
@@ -21,5 +25,12 @@
     "daili_cookie": "UM_distinctid=17abfa06f89dc5-0f97a150c82592-6373264-384000-17abfa06f8ad3c; Hm_lvt_b72418f3b1d81bbcf8f99e6eb5d4e0c3=1626712600,1626886778,1626886791,1626886800; Hm_lpvt_b72418f3b1d81bbcf8f99e6eb5d4e0c3=1626886832",
     "daili_re": "data-url=\"http://(\\d+\\.\\d+\\.\\d+\\.\\d+:\\d+)\"",
     "proxy_pool_url": "http://httpbin.org/ip",
-    "proxy_pool_host": "httpbin.org"
+    "proxy_pool_host": "httpbin.org",
+    "tools_base_path": "tools",
+    "kindlegen_linux": "kindlegen-linux",
+    "kindlegen_mac": "kindlegen-darwin",
+    "kindlegen_win": "kindlegen.exe",
+    "kindlegen_book_compression_level": "1",
+    "kindlegen_book_locale": "zh",
+    "ip_pool_web_num": 20
 }
