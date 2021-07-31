@@ -375,8 +375,6 @@ class Ebookmaker(object):
             t = threading.Thread(target=self.ip_pool,args=(idx,))
             t.start()
             ip_threads.append(t)
-            #if idx%self.thread_num == 0:
-            #    time.sleep(1)
         wait_all_child_task_done(ip_threads)
         new_list = list(set(self.IP))
         new_list.sort(key=self.IP.index)
@@ -538,7 +536,7 @@ class Ebookmaker(object):
             chapter_item.setAttribute('idref', 'chapter' + str(chapter_index))
             chapter_item.setAttribute('linear', 'yes')
         with open(xml_path, 'w', encoding='utf-8') as f:
-            xml.writexml(f, encoding='utf-8')
+            xml.writexml(f, newl = '\n', addindent = '\t',encoding='utf-8')
         time_end = datetime.datetime.now()
         print('完成！耗时：{}'.format(time_end - time_start))
 
@@ -576,7 +574,7 @@ class Ebookmaker(object):
             navPoint.appendChild(navPoint_content)
             navPoint_content.setAttribute('src', 'chapter' + str(chapter_index) + '.html')
         with open(xml_path, 'w', encoding='utf-8') as f:
-            xml.writexml(f, encoding='utf-8')
+            xml.writexml(f, newl = '\n', addindent = '\t',encoding='utf-8')
         time_end = datetime.datetime.now()
         print('完成！耗时：{}'.format(time_end - time_start))
 
@@ -596,7 +594,7 @@ class Ebookmaker(object):
                 img = td.getElementsByTagName('img')[0]
                 img.setAttribute('alt', self.book_info['book_name'])
         with open(xml_path, 'w', encoding='utf-8') as f:
-            xml.writexml(f, encoding='utf-8')
+            xml.writexml(f, newl = '\n', addindent = '\t',encoding='utf-8')
         time_end = datetime.datetime.now()
         print('完成！耗时：{}'.format(time_end - time_start))
 
@@ -625,7 +623,7 @@ class Ebookmaker(object):
             html_body_div_dl_dt_a.appendChild(html_body_div_dl_dt_a_text)
             html_body_div_dl_dt_a.setAttribute('href', 'chapter' + str(chapter_index) + '.html')
         with open(xml_path, 'w', encoding='utf-8') as f:
-            xml.writexml(f, encoding='utf-8')
+            xml.writexml(f, newl = '\n', addindent = '\t',encoding='utf-8')
         time_end = datetime.datetime.now()
         print('完成！耗时：{}'.format(time_end - time_start))
 
