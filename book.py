@@ -281,7 +281,7 @@ class Ebookmaker(object):
         self.kafcli_book_cover = 'cover.png'
         ######################################################################################
 
-    def loadData(self,url,host=None,referer=None,cookie=None,proxy_pool=None,stream_mode=False):
+    def loadData(self,url,host=None,referer=None,cookie=None,proxy_pool=None,stream_mode=False,do_retry=False):
         if host == None:
             host = ''
         if referer == None:
@@ -291,7 +291,9 @@ class Ebookmaker(object):
         self.headers.update({'Cookie': cookie})
         self.headers.update({'Host': host})
         self.headers.update({'Referer': referer})
-        try_agin_count = 3
+        try_agin_count = self.basic_info['book_fetch_retry_count']
+        if not do_retry:
+            try_agin_count = 1
         while try_agin_count > 0:
             try:
                 try_agin_count = try_agin_count - 1
@@ -306,7 +308,8 @@ class Ebookmaker(object):
             except requests.RequestException as e:
                 if try_agin_count == 0:
                     return 'ERROR'
-                time.sleep(3)
+                if do_retry:
+                    time.sleep(self.basic_info['book_fetch_delay'])
             else:
                 break
         if stream_mode == True:
@@ -334,8 +337,6 @@ class Ebookmaker(object):
                 self.sem.acquire()
                 self.IP.append(ip)
                 self.sem.release()
-        if idx%50 != 0:
-            print("*", end='')
         self.semaphore.release()
 
     def proxy_pool(self,idx):
@@ -348,8 +349,6 @@ class Ebookmaker(object):
             self.sem.acquire()
             self.proxyPool.append(proxies)
             self.sem.release()
-        if idx%50 != 0:
-            print("*", end='')
         self.semaphore.release()
 
     def get_ip_pool(self):
@@ -439,7 +438,7 @@ class Ebookmaker(object):
             chapter_content += '\n\n'
             if self.basic_info['book_chapter_file_suffic'] == ".md":
                 chapter_content += '\n\n'
-        chapter_html = self.loadData(self.basic_info['book_url'] + urls[index][0], host=self.basic_info['book_host'], referer=self.basic_info['book_url'], cookie=cookie, proxy_pool=proxy_pool)
+        chapter_html = self.loadData(self.basic_info['book_url'] + urls[index][0], host=self.basic_info['book_host'], referer=self.basic_info['book_url'], cookie=cookie, proxy_pool=proxy_pool, do_retry=True)
         if chapter_html == 'ERROR':
             with open(write_path, 'w+', encoding='utf-8') as f:
                 f.seek(0)
@@ -482,15 +481,14 @@ class Ebookmaker(object):
         time_start = datetime.datetime.now()
         work_threads = []
         self.basic_info['work_thread_num'] = len(self.proxyPool) * 10
+        if self.basic_info['book_fetch_max_thread_num'] > 0:
+            self.basic_info['work_thread_num'] = self.basic_info['book_fetch_max_thread_num']
         print('线程数设置为：{}'.format(self.basic_info['work_thread_num']))
         self.semaphore = threading.BoundedSemaphore(self.basic_info['work_thread_num'])
         for idx in range(len(urls)):
             t = threading.Thread(target=self.work,args=(dir,idx,urls,self.basic_info['book_cookie'],self.proxyPool[random.randint(0,len(self.proxyPool)-1)]))
             t.start()
             work_threads.append(t)
-            if self.basic_info['book_chapter_fetch_delay'] and self.basic_info['book_chapter_fetch_delay'] > 0:
-                if idx%len(self.proxyPool) == 0:
-                    time.sleep(self.basic_info['book_chapter_fetch_delay'])
         wait_all_child_task_done(work_threads, print_char='')
         time_end = datetime.datetime.now()
         print('完成！耗时：{}'.format(time_end - time_start))
@@ -820,9 +818,10 @@ def wait_all_child_task_done(thread_list, print_char='*'):
             print('')
             break
         else:
-            print(print_char, end='', flush=True)
-            if cnt%50 == 0:
-                print('')
+            if print_char != '':
+                print(print_char, end='', flush=True)
+                if cnt%50 == 0:
+                    print('')
             time.sleep(0.5)
 
 def copy_dir(src_path, dest_path):
@@ -880,8 +879,8 @@ def main():
         os.remove(chapter_template_file)
 
     retry_count = 1
-    if em.basic_info['book_chapter_retry_count'] and em.basic_info['book_chapter_retry_count'] > 0:
-        retry_count = em.basic_info['book_chapter_retry_count']
+    if em.basic_info['book_fetch_retry_count'] > 0:
+        retry_count = em.basic_info['book_fetch_retry_count']
     while retry_count:
         if len(em.missing_urls):
             retry_count -= 1
