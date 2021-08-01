@@ -409,9 +409,9 @@ class Ebookmaker(object):
         time_end = datetime.datetime.now()
         print("完成！耗时：{}\n书名：{}\n作者：{}\n类型：{}\n最后更新时间：{}\n简介：{}\n".format(time_end - time_start, self.basic_info['book_name'], self.basic_info['book_author'], self.basic_info['book_subject'], self.basic_info['book_date'], self.basic_info['book_description']))
 
-    def work(self,base_path,index,urls,cookie=None,proxy_pool=None):
+    def work(self,dir,index,urls,cookie=None,proxy_pool=None):
         self.semaphore.acquire()
-        write_path = os.path.join(base_path, 'chapter' + str(index+1) + self.basic_info['book_chapter_file_suffic'])
+        write_path = os.path.join(dir, 'chapter' + str(index+1) + self.basic_info['book_chapter_file_suffic'])
         self.sem.acquire()
         self.book_chapter_dict[index+1] = urls[index][1]
         self.sem.release()
@@ -420,55 +420,57 @@ class Ebookmaker(object):
                 print("文件已缓存: {:<64}".format(urls[index][1]))
                 self.semaphore.release()
                 return
-        with open(write_path, 'w+') as f:
-            chapter_header = ''
-            chapter_bottom = ''
-            if self.basic_info['book_chapter_file_suffic'] == ".html":
-                chapter_html_header = \
-"""<?xml version="1.0" encoding="utf-8" ?>
-<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml" xml:lang=""" + '\"' + self.basic_info['book_language'] + '\">' + """
-<head>
-<meta http-equiv="Content-Type" content="application/xhtml+xml; charset=utf-8" />
-<meta name="generator" content="""  + '\"' + self.basic_info['book_rights'] + '\" />\n<title>\nchapter ' + str(index+1) + """ - 0
-</title>
-<link rel="stylesheet" href="style.css" type="text/css"/>
-</head>
-<body>
-<a id="section" /><a ></a> <a id="article" /><a ></a>
-"""
-                chapter_header = chapter_html_header
-                chapter_bottom = \
-"""</body>
-</html>
-"""
-            if chapter_header != '':
-                f.write(chapter_header)
-            f.write(self.basic_info['book_chapter_title_format_begin'] + urls[index][1] + self.basic_info['book_chapter_title_format_end'])
-            if self.basic_info['book_chapter_file_suffic'] == ".txt" or self.basic_info['book_chapter_file_suffic'] == ".md":
-                f.write('\n\n')
-                if self.basic_info['book_chapter_file_suffic'] == ".md":
-                    f.write('--------------------\n\n')
-            if self.basic_info['book_chapter_file_suffic'] == ".html":
-                f.write('\n')
-            chapter_html = self.loadData(self.basic_info['book_url'] + urls[index][0], host=self.basic_info['book_host'], referer=self.basic_info['book_url'], cookie=cookie, proxy_pool=proxy_pool)
-            if chapter_html == 'ERROR':
+        if self.basic_info['book_chapter_file_suffic'] == ".html":
+            xml_path = os.path.join(dir, 'chapter0.html')
+            xml = minidom.parse(xml_path)
+            html = xml.documentElement
+            html.setAttribute('xml:lang', self.basic_info['book_language'])
+            html_head = html.getElementsByTagName('head')[0]
+            html_head_metas = html_head.getElementsByTagName('meta')
+            for meta in html_head_metas:
+                if meta.hasAttribute('name'):
+                    meta.setAttribute('content', self.basic_info['book_rights'])
+            html_head_title = html_head.getElementsByTagName('title')[0].childNodes[0]
+            html_head_title.nodeValue = 'chapter ' + str(index+1) + ' - 0'
+            html_body = html.getElementsByTagName('body')[0]
+            html_body_h2 = html_body.getElementsByTagName('h2')[0].childNodes[0]
+            html_body_h2.nodeValue = urls[index][1]
+        elif self.basic_info['book_chapter_file_suffic'] == ".txt" or self.basic_info['book_chapter_file_suffic'] == ".md":
+            chapter_content = ""
+            chapter_content += self.basic_info['book_chapter_title_format_begin'] + urls[index][1] + self.basic_info['book_chapter_title_format_end']
+            chapter_content += '\n\n'
+            if self.basic_info['book_chapter_file_suffic'] == ".md":
+                chapter_content += '\n\n'
+        chapter_html = self.loadData(self.basic_info['book_url'] + urls[index][0], host=self.basic_info['book_host'], referer=self.basic_info['book_url'], cookie=cookie, proxy_pool=proxy_pool)
+        if chapter_html == 'ERROR':
+            with open(write_path, 'w+') as f:
                 f.seek(0)
                 f.truncate()
-                print("访问失败: {:<64}".format(urls[index][1]))
-                self.sem.acquire()
-                self.missing_urls.append(urls[index])
-                self.sem.release()
-                self.semaphore.release()
-                return
-            for content in re.findall(re.compile(self.basic_info['book_chapter_content_re']), chapter_html):
-                f.write(self.basic_info['book_chapter_text_format_begin'] + content + self.basic_info['book_chapter_text_format_end'])
+            print("访问失败: {:<64}".format(urls[index][1]))
+            self.sem.acquire()
+            self.missing_urls.append(urls[index])
+            self.sem.release()
+            self.semaphore.release()
+            return
+        for content in re.findall(re.compile(self.basic_info['book_chapter_content_re']), chapter_html):
+            if self.basic_info['book_chapter_file_suffic'] == ".html":
+                html_body_p = xml.createElement('p')
+                html_body.appendChild(html_body_p)
+                html_body_p_text = xml.createTextNode(content)
+                html_body_p.appendChild(html_body_p_text)
+                html_body_p.setAttribute('class', 'a')
+            elif self.basic_info['book_chapter_file_suffic'] == ".txt" or self.basic_info['book_chapter_file_suffic'] == ".md":
+                chapter_content += self.basic_info['book_chapter_text_format_begin'] + content + self.basic_info['book_chapter_text_format_end']
                 if self.basic_info['book_chapter_file_suffic'] == ".md":
-                    f.write('\n\n')
-                elif self.basic_info['book_chapter_file_suffic'] == ".txt" or self.basic_info['book_chapter_file_suffic'] == ".html":
-                    f.write('\n')
-            if chapter_bottom != '':
-                f.write(chapter_bottom)
+                    chapter_content += '\n\n'
+                elif self.basic_info['book_chapter_file_suffic'] == ".txt":
+                    chapter_content += '\n'
+        with open(write_path, 'w+') as f:
+            if self.basic_info['book_chapter_file_suffic'] == ".html":
+                xml.writexml(f, newl = '\n', addindent = '\t', encoding='utf-8')
+                xml.unlink()
+            elif self.basic_info['book_chapter_file_suffic'] == ".txt" or self.basic_info['book_chapter_file_suffic'] == ".md":
+                f.write(chapter_content)
             print("写入成功: {:<64}".format(urls[index][1]))
         self.semaphore.release()
 
@@ -489,7 +491,7 @@ class Ebookmaker(object):
             t = threading.Thread(target=self.work,args=(dir,idx,urls,None,self.proxyPool[random.randint(0,len(self.proxyPool)-1)]))
             t.start()
             work_threads.append(t)
-        wait_all_child_task_done(work_threads)
+        wait_all_child_task_done(work_threads, print_char='')
         time_end = datetime.datetime.now()
         print('完成！耗时：{}'.format(time_end - time_start))
 
@@ -789,9 +791,12 @@ class Ebookmaker(object):
         if not os.path.isfile(kindlegen_tool):
             print('kindlegen工具不存在脚本同目录下tools所在文件夹！请放入后重试！')
         else:
+            lang = self.basic_info['book_language']
+            if lang == 'zh-CN':
+                lang = 'zh'
             epub_path = os.path.join(dir, self.basic_info['book_name'] + '.epub')
             output_path = self.basic_info['book_name'] + '.mobi'
-            kindlegen_command = kindlegen_tool + ' ' + epub_path + ' -dont_append_source -verbose -c' + self.basic_info['kindlegen_book_compression_level'] + ' -locale ' + self.basic_info['kindlegen_book_locale'] + ' -o ' + output_path
+            kindlegen_command = kindlegen_tool + ' ' + epub_path + ' -dont_append_source -verbose -c' + self.basic_info['kindlegen_book_compression_level'] + ' -locale ' + lang + ' -o ' + output_path
             ret = subprocess.Popen(kindlegen_command,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,encoding="utf-8")
             while True:
                 r = ret.stdout.readline()
@@ -805,7 +810,7 @@ class Ebookmaker(object):
             else:
                 print('完成！耗时：{}'.format(time_end - time_start))
 
-def wait_all_child_task_done(thread_list):
+def wait_all_child_task_done(thread_list, print_char='*'):
     cnt = 0
     while True:
         cnt += 1
@@ -816,7 +821,7 @@ def wait_all_child_task_done(thread_list):
             print('')
             break
         else:
-            print('*', end='', flush=True)
+            print(print_char, end='', flush=True)
             if cnt%50 == 0:
                 print('')
             time.sleep(0.5)
@@ -873,7 +878,13 @@ def main():
 
     em = Ebookmaker(basic_info)    
     em.get_ip_pool()
+    if len(em.IP) == 0:
+        print('IP代理池大小为0！请重新获取！')
+        return
     em.get_proxy_pool()
+    if len(em.proxyPool) == 0:
+        print('可用的IP代理池大小为0！请重新获取！')
+        return
     em.get_book_info(os.path.join(em.basic_info['ebooks_labrary_path']))
     if not em.book_chapter_urls:
         return
@@ -893,9 +904,22 @@ def main():
     book_chapters_path = book_path
     if em.basic_info['book_chapter_file_suffic'] == ".html":
         book_chapters_path = os.path.join(book_path, 'OEBPS')
+        chapter_template_file = os.path.join(book_chapters_path, 'chapter0.html')
+        if not os.path.exists(chapter_template_file):
+            print('章节模板文件不存在！请检查后重试。')
+            return
     em.fetch_and_store_urls(book_chapters_path, em.book_chapter_urls)
-    print('尝试重新处理写入失败的章节...')
-    em.fetch_and_store_urls(book_chapters_path, em.missing_urls)
+    if em.basic_info['book_chapter_file_suffic'] == ".html":
+        os.remove(chapter_template_file)
+
+    retry_count = em.basic_info['book_chapter_retry_count']
+    while retry_count:
+        if len(em.missing_urls):
+            retry_count -= 1
+            print('尝试重新处理写入失败的章节，剩余{}次...'.format(retry_count))
+            em.fetch_and_store_urls(book_chapters_path, em.missing_urls)
+        else:
+            break
 
     # Use kaf-cli to convert ePub book
     '''
