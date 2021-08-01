@@ -489,7 +489,7 @@ class Ebookmaker(object):
             t.start()
             work_threads.append(t)
             if self.basic_info['book_chapter_fetch_delay'] and self.basic_info['book_chapter_fetch_delay'] > 0:
-                if idx%len(urls) == 0:
+                if idx%len(self.proxyPool) == 0:
                     time.sleep(self.basic_info['book_chapter_fetch_delay'])
         wait_all_child_task_done(work_threads, print_char='')
         time_end = datetime.datetime.now()
