@@ -484,11 +484,13 @@ class Ebookmaker(object):
         self.basic_info['work_thread_num'] = len(self.proxyPool) * 10
         print('线程数设置为：{}'.format(self.basic_info['work_thread_num']))
         self.semaphore = threading.BoundedSemaphore(self.basic_info['work_thread_num'])
-        chapter_len = len(urls)
-        for idx in range(chapter_len):
+        for idx in range(len(urls)):
             t = threading.Thread(target=self.work,args=(dir,idx,urls,self.basic_info['book_cookie'],self.proxyPool[random.randint(0,len(self.proxyPool)-1)]))
             t.start()
             work_threads.append(t)
+            if self.book_info['book_chapter_fetch_delay'] and self.book_info['book_chapter_fetch_delay'] > 0:
+                if idx%len(urls) == 0:
+                    time.sleep(self.book_info['book_chapter_fetch_delay'])
         wait_all_child_task_done(work_threads, print_char='')
         time_end = datetime.datetime.now()
         print('完成！耗时：{}'.format(time_end - time_start))
@@ -715,7 +717,6 @@ class Ebookmaker(object):
 
     def convert_by_ebook_convert(self,dir):
         '''
-        TBD: use ebook-convert cmdline to convert markdown file to mobi/azw3
         #fmt.Print(fmt.Sprintf("ebook-convert %s %s --authors %s --comments '%s' --level1-toc '//h:h1' --level2-toc '//h:h2' --language '%s'\n", Tmp, Mobi, Author, Comment, Lang))
         ebook-convert 1.epub 1.mobi \
             --input-profile=kindle --output-profile=kindle_pw3 --extra-css=epub.css \
@@ -838,38 +839,6 @@ def copy_dir(src_path, dest_path):
             copy_dir(os.path.join(src_path, file), os.path.join(dest_path, file))
 
 def main():
-    """
-    basic_info = {
-        'book_name': 'MyBook',
-        'book_author': 'Ebookmaker',
-        'book_date': '2021/07/31',
-        'book_publisher': 'Ebookmaker',
-        'book_rights': 'Created with Ebookmaker v1.0',
-        'book_language': 'zh-CN',
-        'book_subject': '小说',
-        'book_description': 'Made by Ebookmaker!',
-        'ebooks_labrary_path': os.path.join('.', 'ebooks'),
-        'book_url': 'https://www.xbooktxt.net/2_2588/',                #https://www.xbiquge.la/66/66747/
-        'book_host': 'www.xbooktxt.net',                               #www.xbiquge.la
-        'book_referer': 'https://www.xbooktxt.net/2_2588/685752.html', #https://www.xbiquge.la/66/66747/26547971.html
-        'book_cookie': 'UM_distinctid=17ac9cdf4d0d3f-09ee6521cf9cfd-6373264-384000-17ac9cdf4d1146c; CNZZDATA1266846634=2004344946-1626881060-https%3A%2F%2Fwww.baidu.com%2F|1626881060; hitbookid=2588; PPad_id_PP=5; hitme=2', #_abcde_qweasd=0; Hm_lvt_169609146ffe5972484b0957bd1b46d6=1626520436,1626585865; Hm_lpvt_169609146ffe5972484b0957bd1b46d6=1626597513
-        'book_chapter_file_suffic': '.html',
-        'book_name_re':re.compile(r'<meta property="og:novel:book_name" content="(.*?)"/>'),                           #re.compile(r'<meta property="og:name" content="(.*?)"/>')
-        'book_description_re':re.compile(r'<meta property="og:description" content="(.*?)"/>'),                        #re.compile(r'<meta property="og:description" content="(.*?)"/>')
-        'book_date_re':re.compile(r'<meta property="og:novel:update_time" content="(2\d{3}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})"/>'),
-        'book_subject_re':re.compile(r'<meta property="og:novel:category" content="(.*?)"/>'),
-        'book_author_re':re.compile(r'<meta property="og:novel:author" content="(.*?)"/>'),                            #re.compile(r'<meta property="og:novel:author" content="(.*?)"/>')
-        'book_cover_url_re':re.compile(r'<meta property="og:image" content="(https:\/\/www.*?jpg)"/>')
-        'book_chapter_list_re':re.compile(r'<dd><a href="/2_2588/([0-9]{5,6}\.html)"  >(.*?)</a></dd>'), #re.compile(r'<dd><a href=\'/66/66747/([0-9]{8}\.html)\' >(.*?)</a></dd>')
-        'book_chapter_content_re':re.compile(r'&nbsp;&nbsp;&nbsp;&nbsp;(.*?)<br><br>', re.S),                         #re.compile(r'<br />&nbsp;&nbsp;&nbsp;&nbsp;.*?\r<br />', re.S)
-        'daili_url_base': 'https://ip.jiangxianli.com/?page=',
-        'daili_host': 'ip.jiangxianli.com',
-        'daili_cookie': 'UM_distinctid=17abfa06f89dc5-0f97a150c82592-6373264-384000-17abfa06f8ad3c; Hm_lvt_b72418f3b1d81bbcf8f99e6eb5d4e0c3=1626712600,1626886778,1626886791,1626886800; Hm_lpvt_b72418f3b1d81bbcf8f99e6eb5d4e0c3=1626886832',
-        'daili_re': re.compile(r'data-url="http://(\d+\.\d+\.\d+\.\d+:\d+)"'),
-        'proxy_pool_url': 'http://httpbin.org/ip',
-        'proxy_pool_host': 'httpbin.org'
-    }
-    """
     with open(os.path.join('configs', 'settings.json'), 'r', encoding='utf-8') as f:
         basic_info = json.load(f)
     print('配置参数：\n{}'.format(json.dumps(basic_info, sort_keys=True, indent=4, separators=(', ', ': '))))
@@ -910,7 +879,9 @@ def main():
     if em.basic_info['book_chapter_file_suffic'] == ".html":
         os.remove(chapter_template_file)
 
-    retry_count = em.basic_info['book_chapter_retry_count']
+    retry_count = 1
+    if em.basic_info['book_chapter_retry_count'] and em.basic_info['book_chapter_retry_count'] > 0:
+        retry_count = em.basic_info['book_chapter_retry_count']
     while retry_count:
         if len(em.missing_urls):
             retry_count -= 1
