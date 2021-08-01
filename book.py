@@ -386,7 +386,7 @@ class Ebookmaker(object):
     def get_book_info(self,dir):
         print('获取书籍信息...')
         time_start = datetime.datetime.now()
-        res = self.loadData(self.basic_info['book_url'], referer=self.basic_info['book_referer'], host=self.basic_info['book_host'])
+        res = self.loadData(self.basic_info['book_url'], referer=self.basic_info['book_referer'], host=self.basic_info['book_host'], cookie=self.basic_info['book_cookie'], proxy_pool=self.proxyPool[random.randint(0,len(self.proxyPool)-1)])
         if res == 'ERROR':
             print("访问失败: {:<64}".format(self.basic_info['book_url']))
             return list()
