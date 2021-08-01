@@ -488,9 +488,9 @@ class Ebookmaker(object):
             t = threading.Thread(target=self.work,args=(dir,idx,urls,self.basic_info['book_cookie'],self.proxyPool[random.randint(0,len(self.proxyPool)-1)]))
             t.start()
             work_threads.append(t)
-            if self.book_info['book_chapter_fetch_delay'] and self.book_info['book_chapter_fetch_delay'] > 0:
+            if self.basic_info['book_chapter_fetch_delay'] and self.basic_info['book_chapter_fetch_delay'] > 0:
                 if idx%len(urls) == 0:
-                    time.sleep(self.book_info['book_chapter_fetch_delay'])
+                    time.sleep(self.basic_info['book_chapter_fetch_delay'])
         wait_all_child_task_done(work_threads, print_char='')
         time_end = datetime.datetime.now()
         print('完成！耗时：{}'.format(time_end - time_start))
