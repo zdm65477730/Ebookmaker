@@ -43,7 +43,7 @@ class GitbookHelper(object):
 
     def readTitle(self, dire):
         try:
-            f = open(os.path.join(dire, 'book.json')) 
+            f = open(os.path.join(dire, 'book.json'), encoding='utf-8') 
             book = json.load(f)
             return book['title']
         except:
@@ -67,7 +67,7 @@ class GitbookHelper(object):
 
     def createRead0(self, dir_input, filename):
         #create 0-README.md
-        readmeFile = open(os.path.join(dir_input, filename), 'w')
+        readmeFile = open(os.path.join(dir_input, filename), 'w', encoding='utf-8')
         readmeFile.close()
 
     def sort_dir_file(self, listdir, dire):
@@ -140,7 +140,7 @@ class GitbookHelper(object):
         if self.book_summary_file_append and os.path.exists(os.path.join(dire, 'SUMMARY.md')):
             #append: read former SUMMARY.md
             print('--append')
-            with open(os.path.join(dire, 'SUMMARY.md')) as f:
+            with open(os.path.join(dire, 'SUMMARY.md'), encoding='utf-8') as f:
                 self.book_former_summary_list = f.readlines()
                 f.close()
         # output to flie
@@ -149,16 +149,15 @@ class GitbookHelper(object):
             filename = 'SUMMARY-GitBook-auto-summary.md'
         else:
             filename = 'SUMMARY.md'
-        output = open(os.path.join(dire, filename), 'w')
-        output.write('# 目录\n\n')
-        output.write('* [简介](./README.md)\n')
-        self.output_markdown(dire, dire, output)
-        output.close()
+        with open(os.path.join(dire, filename), 'w', encoding='utf-8') as output:
+            output.write('# 目录\n\n')
+            output.write('* [简介](./README.md)\n')
+            self.output_markdown(dire, dire, output)
         print('GitBook auto summary文件生成成功！')
 
     def create_gitbook_book_json(self, dire):
         json_data = json.dumps(self.book_json, ensure_ascii=False)
-        with open(os.path.join(dire, 'book.json'), 'w') as f:
+        with open(os.path.join(dire, 'book.json'), 'w', encoding='utf-8') as f:
             f.write(json_data)
             f.close()
         print('GitBook book.json生成成功！')
@@ -208,10 +207,9 @@ class GitbookHelper(object):
         docs_path = os.path.join(self.book_path, 'docs')
         if not os.path.exists(docs_path):
             os.makedirs(docs_path)
-        readmeFile = open(os.path.join(self.book_path, 'README.md'), 'w')
-        readmeFile.write('# {}\n\n'.format('简介'))
-        readmeFile.write('{}\n'.format(self.book_description))
-        readmeFile.close()
+        with open(os.path.join(self.book_path, 'README.md'), 'w', encoding='utf-8') as readmeFile:
+            readmeFile.write('# {}\n\n'.format('简介'))
+            readmeFile.write('{}\n'.format(self.book_description))
         self.create_gitbook_book_json(self.book_path)
         epub_path = os.path.join(dire, 'docs', self.readTitle(dire))
         self.build_epub(dire, epub_path)
@@ -443,7 +441,7 @@ class Ebookmaker(object):
                 chapter_content += '\n\n'
         chapter_html = self.loadData(self.basic_info['book_url'] + urls[index][0], host=self.basic_info['book_host'], referer=self.basic_info['book_url'], cookie=cookie, proxy_pool=proxy_pool)
         if chapter_html == 'ERROR':
-            with open(write_path, 'w+') as f:
+            with open(write_path, 'w+', encoding='utf-8') as f:
                 f.seek(0)
                 f.truncate()
             print("访问失败: {:<64}".format(urls[index][1]))
@@ -465,7 +463,7 @@ class Ebookmaker(object):
                     chapter_content += '\n\n'
                 elif self.basic_info['book_chapter_file_suffic'] == ".txt":
                     chapter_content += '\n'
-        with open(write_path, 'w+') as f:
+        with open(write_path, 'w+', encoding='utf-8') as f:
             if self.basic_info['book_chapter_file_suffic'] == ".html":
                 xml.writexml(f, newl = '\n', addindent = '\t', encoding='utf-8')
                 xml.unlink()
@@ -641,7 +639,7 @@ class Ebookmaker(object):
         print('写入标题和目录...')
         time_start = datetime.datetime.now()
         path = os.path.join(dir, self.basic_info['book_name'] + self.basic_info['book_chapter_file_suffic'])
-        with open(path, 'w+') as f:
+        with open(path, 'w+', encoding='utf-8') as f:
             f.write('# 目录 \n\n')
             f.write('--------------------\n\n')
             for chapter_index in sorted(self.book_chapter_dict):
@@ -872,7 +870,7 @@ def main():
         'proxy_pool_host': 'httpbin.org'
     }
     """
-    with open(os.path.join('configs', 'settings.json'), 'r') as f:
+    with open(os.path.join('configs', 'settings.json'), 'r', encoding='utf-8') as f:
         basic_info = json.load(f)
     print('配置参数：\n{}'.format(json.dumps(basic_info, sort_keys=True, indent=4, separators=(', ', ': '))))
 
