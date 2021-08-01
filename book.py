@@ -396,7 +396,7 @@ class Ebookmaker(object):
         self.basic_info['book_subject'] = re.compile(self.basic_info['book_subject_re']).findall(res)[0]
         self.basic_info['book_description'] = re.compile(self.basic_info['book_description_re']).findall(res)[0]
         self.basic_info['book_cover_url'] = re.compile(self.basic_info['book_cover_url_re']).findall(res)[0]
-        self.book_chapter_urls = re.compile(self.basic_info['book_chapter_list_reg']).findall(res)
+        self.book_chapter_urls = re.compile(self.basic_info['book_chapter_list_re']).findall(res)
         self.create_book_store_dir(os.path.join(dir, self.basic_info['book_name']))
         print('下载书籍封面图片...')
         image_path = os.path.join(dir, self.basic_info['book_name'], 'cover.pic')
@@ -461,7 +461,7 @@ class Ebookmaker(object):
                 self.sem.release()
                 self.semaphore.release()
                 return
-            for content in re.findall(re.compile(self.basic_info['book_chapter_content_reg']), chapter_html):
+            for content in re.findall(re.compile(self.basic_info['book_chapter_content_re']), chapter_html):
                 f.write(self.basic_info['book_chapter_text_format_begin'] + content + self.basic_info['book_chapter_text_format_end'])
                 if self.basic_info['book_chapter_file_suffic'] == ".md":
                     f.write('\n\n')
@@ -857,8 +857,8 @@ def main():
         'book_subject_re':re.compile(r'<meta property="og:novel:category" content="(.*?)"/>'),
         'book_author_re':re.compile(r'<meta property="og:novel:author" content="(.*?)"/>'),                            #re.compile(r'<meta property="og:novel:author" content="(.*?)"/>')
         'book_cover_url_re':re.compile(r'<meta property="og:image" content="(https:\/\/www.*?jpg)"/>')
-        'book_chapter_list_reg':re.compile(r'<dd><a href="/2_2588/([0-9]{5,6}\.html)"  >(.*?)</a></dd>'), #re.compile(r'<dd><a href=\'/66/66747/([0-9]{8}\.html)\' >(.*?)</a></dd>')
-        'book_chapter_content_reg':re.compile(r'&nbsp;&nbsp;&nbsp;&nbsp;(.*?)<br><br>', re.S),                         #re.compile(r'<br />&nbsp;&nbsp;&nbsp;&nbsp;.*?\r<br />', re.S)
+        'book_chapter_list_re':re.compile(r'<dd><a href="/2_2588/([0-9]{5,6}\.html)"  >(.*?)</a></dd>'), #re.compile(r'<dd><a href=\'/66/66747/([0-9]{8}\.html)\' >(.*?)</a></dd>')
+        'book_chapter_content_re':re.compile(r'&nbsp;&nbsp;&nbsp;&nbsp;(.*?)<br><br>', re.S),                         #re.compile(r'<br />&nbsp;&nbsp;&nbsp;&nbsp;.*?\r<br />', re.S)
         'daili_url_base': 'https://ip.jiangxianli.com/?page=',
         'daili_host': 'ip.jiangxianli.com',
         'daili_cookie': 'UM_distinctid=17abfa06f89dc5-0f97a150c82592-6373264-384000-17abfa06f8ad3c; Hm_lvt_b72418f3b1d81bbcf8f99e6eb5d4e0c3=1626712600,1626886778,1626886791,1626886800; Hm_lpvt_b72418f3b1d81bbcf8f99e6eb5d4e0c3=1626886832',
