@@ -386,7 +386,7 @@ class Ebookmaker(object):
     def get_book_info(self,dir):
         print('获取书籍信息...')
         time_start = datetime.datetime.now()
-        res = self.loadData(self.basic_info['book_url'], referer=self.basic_info['book_referer'], host=self.basic_info['book_host'], cookie=self.basic_info['book_cookie'], proxy_pool=self.proxyPool[random.randint(0,len(self.proxyPool)-1)])
+        res = self.loadData(self.basic_info['book_url'], host=self.basic_info['book_host'], referer=self.basic_info['book_referer'], cookie=self.basic_info['book_cookie'], proxy_pool=self.proxyPool[random.randint(0,len(self.proxyPool)-1)])
         if res == 'ERROR':
             print("访问失败: {:<64}".format(self.basic_info['book_url']))
             return list()
@@ -400,7 +400,7 @@ class Ebookmaker(object):
         self.create_book_store_dir(os.path.join(dir, self.basic_info['book_name']))
         print('下载书籍封面图片...')
         image_path = os.path.join(dir, self.basic_info['book_name'], 'cover.pic')
-        res = self.loadData(self.basic_info['book_cover_url'], referer=self.basic_info['book_referer'], host=self.basic_info['book_host'],stream_mode=True)
+        res = self.loadData(self.basic_info['book_cover_url'], host=self.basic_info['book_host'], referer=self.basic_info['book_referer'], cookie=self.basic_info['book_cookie'], proxy_pool=self.proxyPool[random.randint(0,len(self.proxyPool)-1)], stream_mode=True)
         if res == 'ERROR':
             print("访问失败: {:<64}".format(self.basic_info['book_cover_url']))
         else:
@@ -488,7 +488,7 @@ class Ebookmaker(object):
         self.semaphore = threading.BoundedSemaphore(self.basic_info['work_thread_num'])
         chapter_len = len(urls)
         for idx in range(chapter_len):
-            t = threading.Thread(target=self.work,args=(dir,idx,urls,None,self.proxyPool[random.randint(0,len(self.proxyPool)-1)]))
+            t = threading.Thread(target=self.work,args=(dir,idx,urls,self.basic_info['book_cookie'],self.proxyPool[random.randint(0,len(self.proxyPool)-1)]))
             t.start()
             work_threads.append(t)
         wait_all_child_task_done(work_threads, print_char='')
