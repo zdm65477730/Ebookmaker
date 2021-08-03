@@ -278,7 +278,7 @@ class Ebookmaker(object):
     def fetch_and_store_urls(self,dir):
         print('开始抓取所有章节并存入文件...')
         book_chapters_path = dir
-        if em.basic_info['book_chapter_file_suffic'] == ".html":
+        if self.basic_info['book_chapter_file_suffic'] == ".html":
             book_chapters_path = os.path.join(dir, 'OEBPS')
         self.basic_info['work_thread_num'] = len(self.proxyPool)
         if self.basic_info['book_fetch_max_thread_num'] and self.basic_info['book_fetch_max_thread_num'] > 0:
@@ -292,7 +292,7 @@ class Ebookmaker(object):
             t.start()
             work_threads.append(t)
         wait_all_child_task_done(work_threads, print_char='')
-        if em.basic_info['book_chapter_file_suffic'] == ".html":
+        if self.basic_info['book_chapter_file_suffic'] == ".html":
             os.remove(os.path.join(book_chapters_path, 'chapter0.html'))
         time_end = datetime.datetime.now()
         print('完成！耗时：{}'.format(time_end - time_start))
