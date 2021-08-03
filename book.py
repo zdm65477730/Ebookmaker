@@ -79,7 +79,6 @@ class Ebookmaker(object):
         self.IP = []
         self.proxyPool = []
         self.book_chapter_urls = []
-        self.book_chapter_dict = {}
         self.missing_urls = []
 
     def loadData(self,url,host=None,referer=None,cookie=None,proxy_pool=None,stream_mode=False):
@@ -289,7 +288,6 @@ class Ebookmaker(object):
         time_start = datetime.datetime.now()
         work_threads = []
         for idx in range(len(self.book_chapter_urls)):
-            self.book_chapter_dict[idx+1] = self.book_chapter_urls[idx][1]
             t = threading.Thread(target=self.work,args=(book_chapters_path,idx,self.basic_info['book_cookie'],self.proxyPool[random.randint(0,len(self.proxyPool)-1)]))
             t.start()
             work_threads.append(t)
@@ -316,17 +314,17 @@ class Ebookmaker(object):
         metadata.getElementsByTagName('dc:subject')[0].firstChild.data = self.basic_info['book_subject']
         metadata.getElementsByTagName('dc:description')[0].firstChild.data = self.basic_info['book_description']
         manifest = package.getElementsByTagName('manifest')[0]
-        for chapter_index in sorted(self.book_chapter_dict):
+        for chapter_url in self.book_chapter_urls:
             chapter_item = xml.createElement('item')
             manifest.appendChild(chapter_item)
-            chapter_item.setAttribute('id', 'chapter' + str(chapter_index))
-            chapter_item.setAttribute('href', 'chapter' + str(chapter_index) + '.html')
+            chapter_item.setAttribute('id', 'chapter' + str(self.book_chapter_urls.index(chapter_url) + 1))
+            chapter_item.setAttribute('href', 'chapter' + str(self.book_chapter_urls.index(chapter_url) + 1) + '.html')
             chapter_item.setAttribute('media-type', 'application/xhtml+xml')
         spine = package.getElementsByTagName('spine')[0]
-        for chapter_index in sorted(self.book_chapter_dict):
+        for chapter_url in self.book_chapter_urls:
             chapter_item = xml.createElement('itemref')
             spine.appendChild(chapter_item)
-            chapter_item.setAttribute('idref', 'chapter' + str(chapter_index))
+            chapter_item.setAttribute('idref', 'chapter' + str(self.book_chapter_urls.index(chapter_url) + 1))
             chapter_item.setAttribute('linear', 'yes')
         with open(xml_path, 'w', encoding='utf-8') as f:
             xml.writexml(f, newl = '\n', addindent = '\t',encoding='utf-8')
@@ -352,20 +350,20 @@ class Ebookmaker(object):
         docAuthor_text.data = self.basic_info['book_author']
 
         navMap = ncx.getElementsByTagName('navMap')[0]
-        for chapter_index in sorted(self.book_chapter_dict):
+        for chapter_url in self.book_chapter_urls:
             navPoint = xml.createElement('navPoint')
             navMap.appendChild(navPoint)
-            navPoint.setAttribute('id', 'chapter' + str(chapter_index))
-            navPoint.setAttribute('playOrder', str(chapter_index))
+            navPoint.setAttribute('id', 'chapter' + str(self.book_chapter_urls.index(chapter_url) + 1))
+            navPoint.setAttribute('playOrder', str(self.book_chapter_urls.index(chapter_url) + 1))
             navPoint_navLabel = xml.createElement('navLabel')
             navPoint.appendChild(navPoint_navLabel)
             navPoint_navLabel_text = xml.createElement('text')
             navPoint_navLabel.appendChild(navPoint_navLabel_text)
-            navPoint_navLabel_text_title = xml.createTextNode(self.book_chapter_dict[chapter_index])
+            navPoint_navLabel_text_title = xml.createTextNode(chapter_url[1])
             navPoint_navLabel_text.appendChild(navPoint_navLabel_text_title)
             navPoint_content = xml.createElement('content')
             navPoint.appendChild(navPoint_content)
-            navPoint_content.setAttribute('src', 'chapter' + str(chapter_index) + '.html')
+            navPoint_content.setAttribute('src', 'chapter' + str(self.book_chapter_urls.index(chapter_url) + 1) + '.html')
         with open(xml_path, 'w', encoding='utf-8') as f:
             xml.writexml(f, newl = '\n', addindent = '\t',encoding='utf-8')
         time_end = datetime.datetime.now()
@@ -406,15 +404,15 @@ class Ebookmaker(object):
         html_body = html.getElementsByTagName('body')[0]
         html_body_div = html_body.getElementsByTagName('div')[0]
         html_body_div_dl = html_body_div.getElementsByTagName('dl')[0]
-        for chapter_index in sorted(self.book_chapter_dict):
+        for chapter_url in self.book_chapter_urls:
             html_body_div_dl_dt = xml.createElement('dt')
             html_body_div_dl.appendChild(html_body_div_dl_dt)
             html_body_div_dl_dt.setAttribute('class', 'tocl2')
             html_body_div_dl_dt_a = xml.createElement('a')
             html_body_div_dl_dt.appendChild(html_body_div_dl_dt_a)
-            html_body_div_dl_dt_a_text = xml.createTextNode(self.book_chapter_dict[chapter_index])
+            html_body_div_dl_dt_a_text = xml.createTextNode(chapter_url[1])
             html_body_div_dl_dt_a.appendChild(html_body_div_dl_dt_a_text)
-            html_body_div_dl_dt_a.setAttribute('href', 'chapter' + str(chapter_index) + '.html')
+            html_body_div_dl_dt_a.setAttribute('href', 'chapter' + str(self.book_chapter_urls.index(chapter_url) + 1) + '.html')
         with open(xml_path, 'w', encoding='utf-8') as f:
             xml.writexml(f, newl = '\n', addindent = '\t',encoding='utf-8')
         time_end = datetime.datetime.now()
@@ -448,8 +446,8 @@ class Ebookmaker(object):
         with open(path, 'w+', encoding='utf-8') as f:
             f.write('# 目录 \n\n')
             f.write('--------------------\n\n')
-            for chapter_index in sorted(self.book_chapter_dict):
-                chapter_title = self.book_chapter_dict[chapter_index]
+            for chapter_url in self.book_chapter_urls:
+                chapter_title = chapter_url[1]
                 f.write('  - [' + chapter_title + '](#' + re.sub(' |？|，|！|……', '-', chapter_title) + ')\n')
             f.write('\n')
         time_end = datetime.datetime.now()
@@ -459,8 +457,8 @@ class Ebookmaker(object):
         print('写入所有章节...')
         time_start = datetime.datetime.now()
         res = ""
-        for chapter_index in sorted(self.book_chapter_dict):
-            file = self.book_chapter_dict[chapter_index] + self.basic_info['book_chapter_file_suffic']
+        for chapter_url in self.book_chapter_urls:
+            file = chapter_url[1] + self.basic_info['book_chapter_file_suffic']
             path = os.path.join(dir, file)
             with open(path, 'r', encoding='utf-8') as file:
                 content = file.read()
