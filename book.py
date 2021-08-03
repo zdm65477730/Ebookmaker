@@ -583,7 +583,7 @@ def main():
         print('可用的IP代理池大小为0！请重新获取！')
         return
 
-    em.get_book_info(os.path.join(em.basic_info['ebooks_labrary_path']))
+    em.get_book_info(em.basic_info['ebooks_labrary_path'])
     if not em.book_chapter_urls:
         print('获取书籍信息失败，请重试！')
         return
