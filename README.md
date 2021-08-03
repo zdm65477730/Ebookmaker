@@ -27,8 +27,8 @@
 | book_referer                       | `https://www.xbiquge.la/66/66747/26547971.html`               | 从哪个页面链接过来                                          |
 | book_cookie                        | `UM_distinctid=17accce5a4f743--1fa4aa-17accce5a50d31`         | 请求的cookie信息，可以为空                                  |
 | book_chapter_file_suffic           | `.html`                                                       | 存储的章节后缀名                                            |
-| book_fetch_retry_count             | `10`                                                          | 书籍章节爬取失败重试次数，也用于代理IP获取重试                 |
-| book_fetch_delay                   | `5`                                                           | 书籍章节爬取失败重试间隔                                     |
+| book_fetch_retry_count             | `10`                                                          | 书籍章节爬取失败重试次数                                     |
+| book_fetch_delay                   | `5`                                                           | 书籍章节爬取失败重试时间间隔                                 |
 | book_fetch_max_thread_num          | `10`                                                          | 书籍章节爬取最大线程数，如果为0，则自动根据设置为筛选的代码IP数 |
 | book_name_re                       | `<meta property="og:novel:book_name" content="(.*?)"/>`       | 书籍名称正则，注意`"` `\` `'` `.`需要用`\`转义               |
 | book_author_re                     | `<meta property="og:novel:author" content="(.*?)"/>`          | 书籍作者正则，注意`"` `\` `'` `.`需要用`\`转义               |
@@ -43,6 +43,9 @@
 | daili_cookie                       | `UM_distinctid=17accce5a4f743--1fa4aa-17accce5a50d31`         | 获取代理IP使用的cookie                                     |
 | daili_re                           | `data-url="http://(\d+\.\d+\.\d+\.\d+:\d+)"`                  | 获取代理IP的正则，注意`"` `\` `'` `.`需要用`\`转义           |
 | daili_web_num                      | `20`                                                          | 代理IP获取最大页面数                                        |
+| daili_fetch_max_num                | `100`                                                         | 代理IP获取最大IP数                                         |
+| daili_fetch_retry_count            | `5`                                                           | 代理IP获取重试次数                                         |
+| daili_fetch_delay                  | `1`                                                           | 代理IP获取重试时间间隔                                     |
 | proxy_pool_url                     | `http://httpbin.org/ip`                                       | 验证代理IP的主页                                           |
 | proxy_pool_host                    | `httpbin.org`                                                 | 验证代理IP的主页                                           |
 | tools_base_path                    | `tools`                                                       | kindlegen等工具的目录                                      |
