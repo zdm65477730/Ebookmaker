@@ -32,6 +32,12 @@ class Ebookmaker(object):
             self.basic_info['book_fetch_retry_count'] = 1
         if not self.basic_info['book_fetch_delay']:
             self.basic_info['book_fetch_delay'] = 3
+        if not self.basic_info['daili_fetch_retry_count']:
+            self.basic_info['daili_fetch_retry_count'] = 5
+        if not self.basic_info['daili_fetch_delay']:
+            self.basic_info['daili_fetch_delay'] = 1
+        if not self.basic_info['daili_fetch_max_num']:
+            self.basic_info['daili_fetch_max_num'] = 50
         if self.basic_info['book_chapter_file_suffic'] == ".md":
             self.basic_info['book_chapter_title_format_begin'] = '## '
             self.basic_info['book_chapter_title_format_end'] = '  '
@@ -122,10 +128,10 @@ class Ebookmaker(object):
         self.semaphore.acquire()
         daili_data = self.loadData(self.basic_info['daili_url_base'] + str(idx+1), host=self.basic_info['daili_host'], referer=self.basic_info['daili_url_base'] + str(idx), cookie=self.basic_info['daili_cookie'])
         if daili_data != 'ERROR':
-            # data-url="http://119.167.66.22:8081"
             for ip in re.findall(re.compile(self.basic_info['daili_re']), daili_data):
-                if self.IP.count(ip) == 0:
-                    self.IP.append(ip)
+                ip_port = ip[0] + ':' + ip[1]
+                if self.IP.count(ip_port) == 0:
+                    self.IP.append(ip_port)
         self.semaphore.release()
 
     def proxy_pool(self,idx):
@@ -140,7 +146,7 @@ class Ebookmaker(object):
     def get_ip_pool(self):
         print('抓取代理IP池...')
         time_start = datetime.datetime.now()
-        retry = self.basic_info['book_fetch_retry_count']
+        retry = self.basic_info['daili_fetch_retry_count']
         while retry:
             ip_threads = []
             for idx in range(self.basic_info['daili_web_num']):
@@ -148,9 +154,11 @@ class Ebookmaker(object):
                 t.start()
                 ip_threads.append(t)
             wait_all_child_task_done(ip_threads)
-            if len(self.IP) < 80:
+            if len(self.IP) < self.basic_info['daili_fetch_max_num']:
                 retry -= 1
-                print('抓取的IP地址池大小：{} < 80，尝试重新获取代理IP池，剩余{}次...'.format(len(self.IP), retry))
+                print('抓取的IP地址池大小：{} < {}，尝试重新获取代理IP池，剩余{}次...'.format(len(self.IP), self.basic_info['daili_fetch_max_num'], retry))
+                if self.basic_info['daili_fetch_delay'] != 0:
+                    time.sleep(self.basic_info['daili_fetch_delay'])
             else:
                 break
         time_end = datetime.datetime.now()
@@ -162,7 +170,7 @@ class Ebookmaker(object):
         print('线程数设置为：{}'.format(self.basic_info['work_thread_num']))
         self.semaphore = threading.BoundedSemaphore(self.basic_info['work_thread_num'])
         time_start = datetime.datetime.now()
-        retry = self.basic_info['book_fetch_retry_count']
+        retry = self.basic_info['daili_fetch_retry_count']
         while retry:
             proxy_pool_threads = []
             for idx in range(len(self.IP)):
@@ -172,6 +180,8 @@ class Ebookmaker(object):
             wait_all_child_task_done(proxy_pool_threads)
             if len(self.proxyPool) < len(self.IP):
                 retry -= 1
+                if self.basic_info['daili_fetch_delay'] != 0:
+                    time.sleep(self.basic_info['daili_fetch_delay'])
                 print('筛选的IP地址池大小：{} < {}，尝试重新获取代理IP池，剩余{}次...'.format(len(self.proxyPool), len(self.IP), retry))
             else:
                 break
