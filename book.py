@@ -139,26 +139,53 @@ class Ebookmaker(object):
         self.semaphore.release()
 
     def get_ip_pool(self):
-        ip_threads = []
-        for idx in range(self.basic_info['daili_web_num']):
-            t = threading.Thread(target=self.ip_pool,args=(idx,))
-            t.start()
-            ip_threads.append(t)
-        wait_all_child_task_done(ip_threads)
+        print('抓取代理IP池...')
+        time_start = datetime.datetime.now()
+        retry = self.basic_info['book_fetch_retry_count']
+        while retry:
+            ip_threads = []
+            for idx in range(self.basic_info['daili_web_num']):
+                t = threading.Thread(target=self.ip_pool,args=(idx,))
+                t.start()
+                ip_threads.append(t)
+            wait_all_child_task_done(ip_threads)
+            if len(self.IP) < 80:
+                retry -= 1
+                print('抓取的IP地址池大小：{} < 80，尝试重新获取代理IP池，剩余{}次...'.format(len(self.IP), retry))
+            else:
+                break
+        time_end = datetime.datetime.now()
+        print('代理IP池大小为{}，耗时：{}'.format(len(self.IP), time_end - time_start))
 
     def get_proxy_pool(self):
-        proxy_pool_threads = []
-        for idx in range(len(self.IP)):
-            t = threading.Thread(target=self.proxy_pool,args=(idx,))
-            t.start()
-            proxy_pool_threads.append(t)
-        wait_all_child_task_done(proxy_pool_threads)
+        print('筛选代理IP池...')
+        self.basic_info['work_thread_num'] = len(self.IP)
+        print('线程数设置为：{}'.format(self.basic_info['work_thread_num']))
+        self.semaphore = threading.BoundedSemaphore(self.basic_info['work_thread_num'])
+        time_start = datetime.datetime.now()
+        retry = self.basic_info['book_fetch_retry_count']
+        while retry:
+            proxy_pool_threads = []
+            for idx in range(len(self.IP)):
+                t = threading.Thread(target=self.proxy_pool,args=(idx,))
+                t.start()
+                proxy_pool_threads.append(t)
+            wait_all_child_task_done(proxy_pool_threads)
+            if len(self.proxyPool) < len(self.IP):
+                retry -= 1
+                print('筛选的IP地址池大小：{} < {}，尝试重新获取代理IP池，剩余{}次...'.format(len(self.proxyPool), len(self.IP), retry))
+            else:
+                break
+        time_end = datetime.datetime.now()
+        print('筛选后的代理池大小为{}，耗时：{}'.format(len(self.proxyPool), time_end - time_start))
 
     def get_book_info(self,dir):
+        print('获取书籍信息...')
+        time_start = datetime.datetime.now()
         res = self.loadData(self.basic_info['book_url'], host=self.basic_info['book_host'], referer=self.basic_info['book_referer'], cookie=self.basic_info['book_cookie'], proxy_pool=self.proxyPool[random.randint(0,len(self.proxyPool)-1)])
         if res == 'ERROR':
             print("访问失败: {:<64}".format(self.basic_info['book_url']))
-            return list()
+            return
         self.basic_info['book_name'] = re.compile(self.basic_info['book_name_re']).findall(res)[0]
         self.basic_info['book_author'] = re.compile(self.basic_info['book_author_re']).findall(res)[0]
         self.basic_info['book_date'] = re.compile(self.basic_info['book_date_re']).findall(res)[0]
@@ -176,6 +203,8 @@ class Ebookmaker(object):
         else:
             with open(image_path, 'wb') as f:
                 f.write(res)
+        time_end = datetime.datetime.now()
+        print("完成！耗时：{}\n书名：{}\n作者：{}\n类型：{}\n最后更新时间：{}\n简介：{}\n".format(time_end - time_start, self.basic_info['book_name'], self.basic_info['book_author'], self.basic_info['book_subject'], self.basic_info['book_date'], self.basic_info['book_description']))
 
     def work(self,dir,index,cookie=None,proxy_pool=None):
         self.semaphore.acquire()
@@ -250,13 +279,27 @@ class Ebookmaker(object):
             os.makedirs(dir)
 
     def fetch_and_store_urls(self,dir):
+        print('开始抓取所有章节并存入文件...')
+        book_chapters_path = dir
+        if em.basic_info['book_chapter_file_suffic'] == ".html":
+            book_chapters_path = os.path.join(dir, 'OEBPS')
+        self.basic_info['work_thread_num'] = len(self.proxyPool)
+        if self.basic_info['book_fetch_max_thread_num'] and self.basic_info['book_fetch_max_thread_num'] > 0:
+            self.basic_info['work_thread_num'] = self.basic_info['book_fetch_max_thread_num']
+        print('线程数设置为：{}'.format(self.basic_info['work_thread_num']))
+        self.semaphore = threading.BoundedSemaphore(self.basic_info['work_thread_num'])
+        time_start = datetime.datetime.now()
         work_threads = []
         for idx in range(len(self.book_chapter_urls)):
             self.book_chapter_dict[idx+1] = self.book_chapter_urls[idx][1]
-            t = threading.Thread(target=self.work,args=(dir,idx,self.basic_info['book_cookie'],self.proxyPool[random.randint(0,len(self.proxyPool)-1)]))
+            t = threading.Thread(target=self.work,args=(book_chapters_path,idx,self.basic_info['book_cookie'],self.proxyPool[random.randint(0,len(self.proxyPool)-1)]))
             t.start()
             work_threads.append(t)
         wait_all_child_task_done(work_threads, print_char='')
+        if em.basic_info['book_chapter_file_suffic'] == ".html":
+            os.remove(os.path.join(book_chapters_path, 'chapter0.html'))
+        time_end = datetime.datetime.now()
+        print('完成！耗时：{}'.format(time_end - time_start))
 
     def write_content_opf(self,dir):
         print('写入content.opf...')
@@ -530,51 +573,22 @@ def main():
     with open(os.path.join('configs', 'settings.json'), 'r', encoding='utf-8') as f:
         basic_info = json.load(f)
     print('配置参数：\n{}'.format(json.dumps(basic_info, sort_keys=True, indent=4, separators=(', ', ': '))))
-    em = Ebookmaker(basic_info)
 
-    print('抓取代理IP池...')
-    retry = em.basic_info['book_fetch_retry_count']
-    time_start = datetime.datetime.now()
-    while retry:
-        em.get_ip_pool()
-        if len(em.IP) < 80:
-            retry -= 1
-            #print('尝试重新获取代理IP池，剩余{}次...'.format(retry))
-        else:
-            break
+    em = Ebookmaker(basic_info)
+    em.get_ip_pool()
     if len(em.IP) == 0:
         print('代理IP池大小为0！请重新获取！')
         return
-    time_end = datetime.datetime.now()
-    print('代理IP池大小为{}，耗时：{}'.format(len(em.IP), time_end - time_start))
 
-    print('筛选代理IP池...')
-    em.basic_info['work_thread_num'] = len(em.IP)
-    print('线程数设置为：{}'.format(em.basic_info['work_thread_num']))
-    em.semaphore = threading.BoundedSemaphore(em.basic_info['work_thread_num'])
-    time_start = datetime.datetime.now()
-    retry = em.basic_info['book_fetch_retry_count']
-    while retry:
-        em.get_proxy_pool()
-        if len(em.proxyPool) < len(em.IP):
-            retry -= 1
-            #print('尝试重新获取可用的代理IP池，剩余{}次...'.format(retry))
-        else:
-            break
+    em.get_proxy_pool()
     if len(em.proxyPool) == 0:
         print('可用的IP代理池大小为0！请重新获取！')
         return
-    time_end = datetime.datetime.now()
-    print('筛选后的代理池大小为{}，耗时：{}'.format(len(em.proxyPool), time_end - time_start))
 
-    print('获取书籍信息...')
-    time_start = datetime.datetime.now()
     em.get_book_info(os.path.join(em.basic_info['ebooks_labrary_path']))
     if not em.book_chapter_urls:
-        print('获取书籍章节列表失败，请重试！')
+        print('获取书籍信息失败，请重试！')
         return
-    time_end = datetime.datetime.now()
-    print("完成！耗时：{}\n书名：{}\n作者：{}\n类型：{}\n最后更新时间：{}\n简介：{}\n".format(time_end - time_start, em.basic_info['book_name'], em.basic_info['book_author'], em.basic_info['book_subject'], em.basic_info['book_date'], em.basic_info['book_description']))
 
     print('拷贝模板文件到书籍生成目录...')
     book_path = os.path.join(em.basic_info['ebooks_labrary_path'], em.basic_info['book_name'])
@@ -585,29 +599,16 @@ def main():
         book_cover_path = os.path.join(book_path, 'OEBPS', 'cover.jpg')
     if os.path.exists(os.path.join(book_path, 'cover.pic')):
         shutil.move(os.path.join(book_path, 'cover.pic'), book_cover_path)
-    book_chapters_path = book_path
     if em.basic_info['book_chapter_file_suffic'] == ".html":
-        book_chapters_path = os.path.join(book_path, 'OEBPS')
-        chapter_template_file = os.path.join(book_chapters_path, 'chapter0.html')
+        chapter_template_file = os.path.join(book_path, 'OEBPS', 'chapter0.html')
         if not os.path.exists(chapter_template_file):
             print('章节模板文件不存在！请检查后重试。')
             return
 
-    print('开始抓取所有章节并存入文件...')
-    em.basic_info['work_thread_num'] = len(em.proxyPool)
-    if em.basic_info['book_fetch_max_thread_num'] and em.basic_info['book_fetch_max_thread_num'] > 0:
-        em.basic_info['work_thread_num'] = em.basic_info['book_fetch_max_thread_num']
-    print('线程数设置为：{}'.format(em.basic_info['work_thread_num']))
-    em.semaphore = threading.BoundedSemaphore(em.basic_info['work_thread_num'])
-    time_start = datetime.datetime.now()
-    em.fetch_and_store_urls(book_chapters_path)
+    em.fetch_and_store_urls(book_path)
     if len(em.missing_urls):
         print('仍然存在获取失败的章节！请重试！')
         return
-    if em.basic_info['book_chapter_file_suffic'] == ".html":
-        os.remove(chapter_template_file)
-    time_end = datetime.datetime.now()
-    print('完成！耗时：{}'.format(time_end - time_start))
 
     # Use kaf-cli to convert ePub book
     '''
