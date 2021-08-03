@@ -194,7 +194,9 @@ class Ebookmaker(object):
         self.basic_info['book_cover_url'] = re.compile(self.basic_info['book_cover_url_re']).findall(res)[0]
         self.book_chapter_urls = re.compile(self.basic_info['book_chapter_list_re']).findall(res)
         print('开始创建书籍存档目录：%s...' %dir)
-        self.create_book_store_dir(os.path.join(dir, self.basic_info['book_name']))
+        book_store_path = os.path.join(dir, self.basic_info['book_name'])
+        if not os.path.exists(book_store_path):
+            os.makedirs(book_store_path)
         print('下载书籍封面图片...')
         image_path = os.path.join(dir, self.basic_info['book_name'], 'cover.pic')
         res = self.loadData(self.basic_info['book_cover_url'], host=self.basic_info['book_host'], referer=self.basic_info['book_referer'], cookie=self.basic_info['book_cookie'], proxy_pool=self.proxyPool[random.randint(0,len(self.proxyPool)-1)], stream_mode=True)
@@ -273,10 +275,6 @@ class Ebookmaker(object):
                 f.write(chapter_content)
             print("写入成功: {}".format(write_path))
         self.semaphore.release()
-
-    def create_book_store_dir(self,dir):
-        if not os.path.exists(dir):
-            os.makedirs(dir)
 
     def fetch_and_store_urls(self,dir):
         print('开始抓取所有章节并存入文件...')
