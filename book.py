@@ -181,8 +181,16 @@ class Ebookmaker(object):
     def get_book_info(self,dir):
         print('获取书籍信息...')
         time_start = datetime.datetime.now()
-        res = self.loadData(self.basic_info['book_url'], host=self.basic_info['book_host'], referer=self.basic_info['book_referer'], cookie=self.basic_info['book_cookie'], proxy_pool=self.proxyPool[random.randint(0,len(self.proxyPool)-1)])
-        if res == 'ERROR':
+        retry = self.basic_info['book_fetch_retry_count']
+        while retry:
+            res = self.loadData(self.basic_info['book_url'], host=self.basic_info['book_host'], referer=self.basic_info['book_referer'], cookie=self.basic_info['book_cookie'], proxy_pool=self.proxyPool[random.randint(0,len(self.proxyPool)-1)])
+            if res == 'ERROR':
+                retry -= 1
+                print('尝试重新获取书籍信息，剩余{}次...'.format(retry))
+                time.sleep(self.basic_info['book_fetch_delay'])
+            else:
+                break
+        if retry == 0:
             print("访问失败: {:<64}".format(self.basic_info['book_url']))
             return
         self.basic_info['book_name'] = re.compile(self.basic_info['book_name_re']).findall(res)[0]
