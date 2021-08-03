@@ -14,7 +14,41 @@
 
 ## 用法
 
-  json配置文件里已经支持xbooktxt网站的内容抓取，其他网站，需要自行添加爬取的正则。
-  如果要爬取xbooktxt网站里其他小说，仅需要修改json配置文件里以下项：
-  <pre><code>self.book_url = 'https://www.xbooktxt.net/2_2588/'</code></pre>
-  为您自己的小说目录页地址即可。
+  json配置文件里已经支持xbooktxt和xbiquge网站的内容抓取，其他网站，需要自行添加爬取的正则。
+  如果要爬取小说，需要配置settings.json配置文件，以下为示例说明：
+  <pre><code>
+  {
+    "book_publisher": "书籍发行商",
+    "book_rights": "书籍版权信息",
+    "book_language": "书籍语言，例：zh-CN",
+    "ebooks_labrary_path": "制作书籍的临时存储目录，例：ebooks",
+    "book_url": "书籍目录页，如：https://www.xbiquge.la/66/66747/",
+    "book_host": "书籍网站主页，如：www.xbiquge.la",
+    "book_referer": "从哪个页面链接过来，例如：https://www.xbiquge.la/66/66747/26547971.html",
+    "book_cookie": "请求的cookie信息",
+    "book_chapter_file_suffic": "存储的章节后缀名，例：.html",
+    "book_fetch_retry_count": 10, /*书籍章节爬取失败重试次数，也用于代理IP获取重试*/
+    "book_fetch_delay": 5, /*书籍章节爬取失败重试间隔*/
+    "book_fetch_max_thread_num": 10,  /*书籍章节爬取最大线程数，如果为0，则自动根据设置为筛选的代码IP数*/
+    "book_name_re": "书籍名称正则",
+    "book_author_re": "书籍作者正则",
+    "book_description_re": "书籍描述正则",
+    "book_subject_re": "书籍类别正则",
+    "book_date_re": "书籍时间正则",
+    "book_cover_url_re": "书籍封面正则",
+    "book_chapter_list_re": "书籍章节名正则",
+    "book_chapter_content_re": "书籍章节正文正则",
+    "daili_url_base": "代理IP提供页地址",
+    "daili_host": "代理IP提供网址",
+    "daili_cookie": "获取代理IP使用的cookie",
+    "daili_re": "获取代理IP的正则",
+    "proxy_pool_url": "验证代理IP的主页",
+    "proxy_pool_host": "验证代理IP的主页",
+    "tools_base_path": "kindlegen等工具的目录",
+    "kindlegen_linux": "kindlegen Liunux版本名称",
+    "kindlegen_mac": "kindlegen MAC版本名称",
+    "kindlegen_win": "kindlegen Windows版本名称",
+    "kindlegen_book_compression_level": "kindlegen压缩机别，例如：1",
+    "ip_pool_web_num": 20  /*代理IP获取最大页面数*/
+  }
+  </code></pre>
