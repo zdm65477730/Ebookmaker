@@ -23,12 +23,11 @@
     "daili_host": "ip.jiangxianli.com",
     "daili_cookie": "",
     "daili_re": "data-url=\"http://(\\d+\\.\\d+\\.\\d+\\.\\d+:\\d+)\"",
+    "daili_web_num": 20,
     "proxy_pool_url": "http://httpbin.org/ip",
     "proxy_pool_host": "httpbin.org",
     "tools_base_path": "tools",
     "kindlegen_linux": "kindlegen-linux",
     "kindlegen_mac": "kindlegen-darwin",
     "kindlegen_win": "kindlegen.exe",
-    "kindlegen_book_compression_level": "1",
-    "ip_pool_web_num": 20
-}
+    "kindlegen_book_compression_level": "1"
