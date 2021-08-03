@@ -16,7 +16,7 @@
     "book_description_re": "<meta property=\"og:description\" content=\"(.*?)\"/>",
     "book_subject_re": "<meta property=\"og:novel:category\" content=\"(.*?)\"/>",
     "book_date_re": "<p>最后更新：(2\\d{3}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2})</p>",
-    "book_cover_url_re": "<meta property=\"og:image\" content=\"(https:\/\/www.*?jpg)\"/>",
+    "book_cover_url_re": "<meta property=\"og:image\" content=\"(https://www.*?jpg)\"/>",
     "book_chapter_list_re": "<dd><a href=\\'/66/66747/([0-9]{8}\\.html)\\' >(.*?)</a></dd>",
     "book_chapter_content_re": "<br />&nbsp;&nbsp;&nbsp;&nbsp;(.*?)\r<br />",
     "daili_url_base": "https://ip.jiangxianli.com/?page=",
