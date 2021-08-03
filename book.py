@@ -74,7 +74,7 @@ class Ebookmaker(object):
             'Host':self.basic_info['book_host'],
             'Referer':self.basic_info['book_referer']
         }
-        self.basic_info['work_thread_num'] = self.basic_info['ip_pool_web_num']
+        self.basic_info['work_thread_num'] = self.basic_info['daili_web_num']
         self.semaphore = threading.BoundedSemaphore(self.basic_info['work_thread_num'])
         self.IP = []
         self.proxyPool = []
@@ -140,7 +140,7 @@ class Ebookmaker(object):
 
     def get_ip_pool(self):
         ip_threads = []
-        for idx in range(self.basic_info['ip_pool_web_num']):
+        for idx in range(self.basic_info['daili_web_num']):
             t = threading.Thread(target=self.ip_pool,args=(idx,))
             t.start()
             ip_threads.append(t)
