@@ -25,7 +25,7 @@ class Ebookmaker(object):
         self.basic_info = basic_info
         self.basic_info['book_name'] = "MyBook"
         self.basic_info['book_author'] = "Ebookmaker"
-        self.basic_info['book_date'] = "2021/07/31"
+        self.basic_info['book_date'] = time.strftime("%Y/%m/%d", time.localtime())
         self.basic_info['book_subject'] = "其他"
         self.basic_info['book_description'] = "Made by Ebookmaker!"
         if not self.basic_info['book_fetch_retry_count']:
