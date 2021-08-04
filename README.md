@@ -53,3 +53,6 @@
 | kindlegen_mac                      | `kindlegen-darwin`                                            | kindlegen MAC版本名称                                      |
 | kindlegen_win                      | `kindlegen.exe`                                               | kindlegen Windows版本名称                                  |
 | kindlegen_book_compression_level   | `1`                                                           | kindlegen压缩级别                                          |
+| ebook_convert_linux                | `/usr/bin/ebook-convert`                                      | ebook_convert安装路径                                      |
+| ebook_convert_mac                  | `/usr/bin/ebook-convert`                                      | ebook_convert安装路径                                      |
+| ebook_convert_win                  | `C:\\Calibre Portable\\Calibre\\ebook-convert.exe`            | ebook_convert安装路径                                      |
