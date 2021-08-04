@@ -298,7 +298,7 @@ class Ebookmaker(object):
         book_chapters_path = dir
         if self.basic_info['book_chapter_file_suffic'] == ".html":
             book_chapters_path = os.path.join(dir, 'OEBPS')
-        self.basic_info['work_thread_num'] = len(self.proxyPool)
+        self.basic_info['work_thread_num'] = len(self.proxyPool) * 3
         if self.basic_info['book_fetch_max_thread_num'] and self.basic_info['book_fetch_max_thread_num'] > 0:
             self.basic_info['work_thread_num'] = self.basic_info['book_fetch_max_thread_num']
         print('线程数设置为：{}'.format(self.basic_info['work_thread_num']))
@@ -498,8 +498,10 @@ class Ebookmaker(object):
         elif (sysstr == "Mac"):
             kindlegen_tool = self.basic_info['kindlegen_mac']
         kindlegen_tool = os.path.join(self.basic_info['tools_base_path'], kindlegen_tool)
-        if not os.path.isfile(kindlegen_tool):
-            print('kindlegen工具不存在脚本同目录下tools所在文件夹！请放入后重试！')
+        if not kindlegen_tool:
+            print('kindlegen工具路径未配置！请先安装配置后重试！')
+        elif not os.path.isfile(kindlegen_tool):
+            print('kindlegen工具不存在于脚本同目录下tools所在文件夹！请放入后重试！')
         else:
             lang = self.basic_info['book_language']
             if lang == 'zh-CN':
@@ -507,16 +509,14 @@ class Ebookmaker(object):
             epub_path = os.path.join(dir, self.basic_info['book_name'] + '.epub')
             output_path = self.basic_info['book_name'] + '.mobi'
             kindlegen_command = kindlegen_tool + ' ' + epub_path + ' -dont_append_source -verbose -c' + self.basic_info['kindlegen_book_compression_level'] + ' -locale ' + lang + ' -o ' + output_path
-            ret = subprocess.Popen(kindlegen_command,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,encoding="utf-8")
-            while True:
-                r = ret.stdout.readline()
-                if not r:
-                    break
-                else:
-                    print(r.strip())
+            proc = subprocess.Popen(kindlegen_command,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,encoding="utf-8")
+            while proc.poll() is None:
+                line = proc.stdout.readline()
+                if line and line != '' and line != '\n':
+                    print(line, end='')
             time_end = datetime.datetime.now()
-            if ret.returncode != None:
-                print('失败! 耗时：{}\n{}\n'.format(time_end - time_start, ret.returncode))
+            if proc.returncode != 0 and proc.returncode != 1:
+                print('失败! 耗时：{} 返回值：{}\n'.format(time_end - time_start, proc.returncode))
             else:
                 print('完成！耗时：{}'.format(time_end - time_start))
 
@@ -539,19 +539,39 @@ class Ebookmaker(object):
         '''
         print('转换为azw3电子书格式...')
         time_start = datetime.datetime.now()
-        ebook_convert_command = 'ebook-convert ' + os.path.join(dir, self.basic_info['book_name'] + '.epub') + ' ' + os.path.join(dir, self.basic_info['book_name'] + '.azw3') + ' --input-profile=kindle --output-profile=kindle_pw3 --max-toc-links=0 --use-auto-toc --mobi-toc-at-start --pretty-print'
-        ret = subprocess.Popen(ebook_convert_command,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,encoding="utf-8")
-        while True:
-            r = ret.stdout.readline()
-            if not r:
-                break
-            else:
-                print(r.strip())
-        time_end = datetime.datetime.now()
-        if ret.returncode != None:
-            print('失败! 耗时：{}\n{}\n'.format(time_end - time_start, ret.returncode))
+        sysstr = platform.system()
+        if (sysstr == "Windows"):
+            ebook_convert_tool = self.basic_info['ebook_convert_win']  # powershell should add a '&' at the begin of the command if there are spaces in the path, while cmd no need.
+        elif (sysstr == "Linux"):
+            ebook_convert_tool = self.basic_info['ebook_convert_linux']
+        elif (sysstr == "Mac"):
+            ebook_convert_tool = self.basic_info['ebook_convert_mac']
+        if not ebook_convert_tool:
+            print('ebook-convert工具路径未配置！请先安装配置后重试！')
+        elif not os.path.isfile(ebook_convert_tool):
+            print('ebook-convert工具 {} 不存在！请先安装后重试！'.format(ebook_convert_tool))
+            print('下载页面：http://calibre-ebook.com/download')
+            print('Mac OS下载安装: curl -O --insecure https://download.calibre-ebook.com/5.24.0/calibre-5.24.0.dmg')
+            print('Linux安装命令: sudo -v && wget -nv -O- https://download.calibre-ebook.com/linux-installer.sh | sudo sh /dev/stdin')
+            print('Windows下载安装: https://download.calibre-ebook.com/5.24.0/calibre-5.24.0.msi')
         else:
-            print('完成！耗时：{}'.format(time_end - time_start))
+            lang = self.basic_info['book_language']
+            if lang == 'zh-CN':
+                lang = 'zh'
+            ebook_convert_path = '\"' + ebook_convert_tool + '\" '
+            epub_path = os.path.join(dir, self.basic_info['book_name'] + '.epub')
+            output_path = os.path.join(dir, self.basic_info['book_name'] + '.azw3')
+            ebook_convert_command = ebook_convert_path + epub_path + ' ' + output_path + ' --language=' + lang + ' --input-profile=kindle --output-profile=kindle_pw3 --max-toc-links=0 --use-auto-toc --mobi-toc-at-start --pretty-print --prefer-metadata-cover'
+            proc = subprocess.Popen(ebook_convert_command,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,encoding="utf-8")
+            while proc.poll() is None:
+                line = proc.stdout.readline()
+                if line and line != '' and line != '\n':
+                    print(line, end='')
+            time_end = datetime.datetime.now()
+            if proc.returncode != 0:
+                print('失败! 耗时：{} 返回值：{}\n'.format(time_end - time_start, proc.returncode))
+            else:
+                print('完成！耗时：{}'.format(time_end - time_start))
 
 def wait_all_child_task_done(thread_list, print_char='*'):
     cnt = 0
@@ -648,6 +668,7 @@ def main():
         em.write_book_toc_html(book_path)
         em.create_epub(book_path)
         em.convert_by_kindlegen(book_path)
+        em.convert_by_ebook_convert(book_path)
 
 if __name__ == '__main__':
     main()
