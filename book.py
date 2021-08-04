@@ -487,39 +487,6 @@ class Ebookmaker(object):
         time_end = datetime.datetime.now()
         print('完成！耗时：{}'.format(time_end - time_start))
 
-    def convert_by_ebook_convert(self,dir):
-        '''
-        #fmt.Print(fmt.Sprintf("ebook-convert %s %s --authors %s --comments '%s' --level1-toc '//h:h1' --level2-toc '//h:h2' --language '%s'\n", Tmp, Mobi, Author, Comment, Lang))
-        ebook-convert 1.epub 1.mobi \
-            --input-profile=kindle --output-profile=kindle_pw3 --extra-css=epub.css \
-            --expand-css --remove-paragraph-spacing-indent-size=2 --remove-first-image --chapter-mark=pagebreak \
-            --prefer-metadata-cover --insert-metadata --level1-toc=//h:h1 --level2-toc=//h:h2 --level3-toc=//h:h3 \
-            --max-toc-links=0 --use-auto-toc --mobi-toc-at-start --pretty-print \
-            --title="武神主宰" \
-            --authors="暗魔师" \
-            --cover=cover.jpg \
-            --comments="天武大陆一代传奇秦尘，因好友背叛意外陨落武域。三百年后，他转生在一个受尽欺凌的王府私生子身上，利用前世造诣，凝神功、炼神丹，逆天而上，强势崛起，从此踏上一段震惊大陆的惊世之旅。" \
-            --publisher="ireader" \
-            --tags="小说" \
-            --book-producer="越光" \
-            --language=zh
-        '''
-        print('转换为azw3/mobi电子书格式...')
-        time_start = datetime.datetime.now()
-        ebook_convert_command = 'ebook-convert ' + os.path.join(dir, self.basic_info['book_name'] + '.epub') + ' ' + os.path.join(dir, self.basic_info['book_name'] + '.azw3')
-        ret = subprocess.Popen(ebook_convert_command,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,encoding="utf-8")
-        while True:
-            r = ret.stdout.readline()
-            if not r:
-                break
-            else:
-                print(r.strip())
-        time_end = datetime.datetime.now()
-        if ret.returncode != None:
-            print('失败! 耗时：{}\n{}\n'.format(time_end - time_start, ret.returncode))
-        else:
-            print('完成！耗时：{}'.format(time_end - time_start))
-
     def convert_by_kindlegen(self,dir):
         print('转换为Kindle电子书格式...')
         time_start = datetime.datetime.now()
@@ -552,6 +519,39 @@ class Ebookmaker(object):
                 print('失败! 耗时：{}\n{}\n'.format(time_end - time_start, ret.returncode))
             else:
                 print('完成！耗时：{}'.format(time_end - time_start))
+
+    def convert_by_ebook_convert(self,dir):
+        '''
+        #fmt.Print(fmt.Sprintf("ebook-convert %s %s --authors %s --comments '%s' --level1-toc '//h:h1' --level2-toc '//h:h2' --language '%s'\n", Tmp, Mobi, Author, Comment, Lang))
+        ebook-convert 1.epub 1.mobi \
+            --input-profile=kindle --output-profile=kindle_pw3 --extra-css=epub.css \
+            --expand-css --remove-paragraph-spacing-indent-size=2 --remove-first-image --chapter-mark=pagebreak \
+            --prefer-metadata-cover --insert-metadata --level1-toc=//h:h1 --level2-toc=//h:h2 --level3-toc=//h:h3 \
+            --max-toc-links=0 --use-auto-toc --mobi-toc-at-start --pretty-print \
+            --title="武神主宰" \
+            --authors="暗魔师" \
+            --cover=cover.jpg \
+            --comments="天武大陆一代传奇秦尘，因好友背叛意外陨落武域。三百年后，他转生在一个受尽欺凌的王府私生子身上，利用前世造诣，凝神功、炼神丹，逆天而上，强势崛起，从此踏上一段震惊大陆的惊世之旅。" \
+            --publisher="ireader" \
+            --tags="小说" \
+            --book-producer="越光" \
+            --language=zh
+        '''
+        print('转换为azw3电子书格式...')
+        time_start = datetime.datetime.now()
+        ebook_convert_command = 'ebook-convert ' + os.path.join(dir, self.basic_info['book_name'] + '.epub') + ' ' + os.path.join(dir, self.basic_info['book_name'] + '.azw3') + ' --input-profile=kindle --output-profile=kindle_pw3 --max-toc-links=0 --use-auto-toc --mobi-toc-at-start --pretty-print'
+        ret = subprocess.Popen(ebook_convert_command,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,encoding="utf-8")
+        while True:
+            r = ret.stdout.readline()
+            if not r:
+                break
+            else:
+                print(r.strip())
+        time_end = datetime.datetime.now()
+        if ret.returncode != None:
+            print('失败! 耗时：{}\n{}\n'.format(time_end - time_start, ret.returncode))
+        else:
+            print('完成！耗时：{}'.format(time_end - time_start))
 
 def wait_all_child_task_done(thread_list, print_char='*'):
     cnt = 0
