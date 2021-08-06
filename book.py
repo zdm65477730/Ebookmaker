@@ -217,7 +217,7 @@ class Ebookmaker(object):
 
     def work(self,dir,index,cookie=None,proxy_pool=None):
         self.semaphore.acquire()
-        write_path = os.path.join(dir, 'chapter' + str(index+1) + self.basic_info['book_chapter_file_suffic'])
+        write_path = os.path.join(dir, 'chapter' + str(index+1) + '.html')
         if os.path.isfile(write_path):
             if os.path.getsize(write_path):
                 print("文件已缓存: {:<64}".format(write_path))
@@ -430,12 +430,12 @@ class Ebookmaker(object):
         time_start = datetime.datetime.now()
         res = ""
         for chapter_url in self.book_chapter_urls:
-            file = chapter_url[1] + self.basic_info['book_chapter_file_suffic']
+            file = chapter_url[1] + '.html'
             path = os.path.join(dir, file)
             with open(path, 'r', encoding='utf-8') as file:
                 content = file.read()
             res += content
-        path = os.path.join(dir, self.basic_info['book_name'] + self.basic_info['book_chapter_file_suffic'])
+        path = os.path.join(dir, self.basic_info['book_name'] + '.html')
         with open(path, 'a+', encoding='utf-8') as f:
             f.write(res)
         time_end = datetime.datetime.now()
