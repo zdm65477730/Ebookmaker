@@ -439,21 +439,19 @@ class Ebookmaker(object):
     def create_epub(self,dir):
         print('生成epub文件...')
         time_start = datetime.datetime.now()
-        meta_inf_path = os.path.join(dir, 'META-INF')
-        oebps_path = os.path.join(dir, 'OEBPS')
-        mimetype_path = os.path.join(dir, 'mimetype')
-        epub_path = os.path.join(dir, self.basic_info['book_name'] + '.epub')
-        if not os.path.exists(meta_inf_path) or not os.path.exists(oebps_path) or not os.path.exists(mimetype_path):
+        current_path = os.getcwd()
+        os.chdir(dir)
+        if not os.path.exists('META-INF') or not os.path.exists('OEBPS') or not os.path.exists('mimetype'):
             print("创建ePub失败！META-INF, OEBPS或mimetype不存在。")
             return
-        time_start = datetime.datetime.now()
-        zfile = zipfile.ZipFile(epub_path, 'w', zipfile.ZIP_DEFLATED)
-        for epubdir in [meta_inf_path, oebps_path]:
+        zfile = zipfile.ZipFile(self.basic_info['book_name'] + '.epub', 'w', zipfile.ZIP_DEFLATED)
+        for epubdir in ['META-INF', 'OEBPS']:
             for dirpath, dirs, files in os.walk(epubdir):
                 for file in files:
                     zfile.write(os.path.join(dirpath, file))
-        zfile.write(mimetype_path)
+        zfile.write('mimetype')
         zfile.close()
+        os.chdir(current_path)
         time_end = datetime.datetime.now()
         print('完成！耗时：{}'.format(time_end - time_start))
 
@@ -500,10 +498,8 @@ class Ebookmaker(object):
         kindlegen_tool = os.path.join(self.basic_info['tools_base_path'], kindlegen_tool)
         if not kindlegen_tool:
             print('kindlegen工具路径未配置！请先安装配置后重试！')
-            return -110
         elif not os.path.isfile(kindlegen_tool):
             print('kindlegen工具不存在于脚本同目录下tools所在文件夹！请放入后重试！')
-            return -120
         else:
             lang = self.basic_info['book_language']
             if lang == 'zh-CN':
@@ -513,16 +509,14 @@ class Ebookmaker(object):
             kindlegen_command = kindlegen_tool + ' ' + epub_path + ' -dont_append_source -verbose -c' + self.basic_info['kindlegen_book_compression_level'] + ' -locale ' + lang + ' -o ' + output_path
             proc = subprocess.Popen(kindlegen_command,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,encoding="utf-8")
             while proc.poll() is None:
-                stdline = proc.stdout.readline()
-                if (stdline and stdline != '' and stdline != '\n'):
-                    print(stdline, end='')
+                line = proc.stdout.readline()
+                if line and line != '' and line != '\n':
+                    print(line, end='')
             time_end = datetime.datetime.now()
             if proc.returncode != 0 and proc.returncode != 1:
-                print('失败! 耗时：{} 返回值：{}\n错误信息：\n{}'.format(time_end - time_start, proc.returncode, proc.stderr.readlines()))
-                print('If you are operating under WSL, please run `sudo service binfmt-support start` before run script every time!')
+                print('失败! 耗时：{} 返回值：{}\n'.format(time_end - time_start, proc.returncode))
             else:
                 print('完成！耗时：{}'.format(time_end - time_start))
-            return proc.returncode
 
     def convert_by_ebook_convert(self,dir):
         '''
@@ -552,14 +546,12 @@ class Ebookmaker(object):
             ebook_convert_tool = self.basic_info['ebook_convert_mac']
         if not ebook_convert_tool:
             print('ebook-convert工具路径未配置！请先安装配置后重试！')
-            return -110
         elif not os.path.isfile(ebook_convert_tool):
             print('ebook-convert工具 {} 不存在！请先安装后重试！'.format(ebook_convert_tool))
             print('下载页面：http://calibre-ebook.com/download')
             print('Mac OS下载安装: curl -O --insecure https://download.calibre-ebook.com/5.24.0/calibre-5.24.0.dmg')
             print('Linux安装命令: sudo -v && wget -nv -O- https://download.calibre-ebook.com/linux-installer.sh | sudo sh /dev/stdin')
             print('Windows下载安装: https://download.calibre-ebook.com/5.24.0/calibre-5.24.0.msi')
-            return -120
         else:
             lang = self.basic_info['book_language']
             if lang == 'zh-CN':
@@ -570,15 +562,14 @@ class Ebookmaker(object):
             ebook_convert_command = ebook_convert_path + epub_path + ' ' + output_path + ' --language=' + lang + ' --input-profile=kindle --output-profile=kindle_pw3 --max-toc-links=0 --use-auto-toc --mobi-toc-at-start --pretty-print --prefer-metadata-cover'
             proc = subprocess.Popen(ebook_convert_command,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,encoding="utf-8")
             while proc.poll() is None:
-                stdline = proc.stdout.readline()
-                if (stdline and stdline != '' and stdline != '\n'):
-                    print(stdline, end='')
+                line = proc.stdout.readline()
+                if line and line != '' and line != '\n':
+                    print(line, end='')
             time_end = datetime.datetime.now()
-            if proc.returncode != 0 and proc.returncode != 1:
-                print('失败! 耗时：{} 返回值：{}\n错误信息：\n{}'.format(time_end - time_start, proc.returncode, proc.stderr.readlines()))
+            if proc.returncode != 0:
+                print('失败! 耗时：{} 返回值：{}\n'.format(time_end - time_start, proc.returncode))
             else:
                 print('完成！耗时：{}'.format(time_end - time_start))
-            return proc.returncode
 
 def wait_all_child_task_done(thread_list, print_char='*'):
     cnt = 0
@@ -674,9 +665,8 @@ def main():
         em.write_cover_html(book_path)
         em.write_book_toc_html(book_path)
         em.create_epub(book_path)
-        rc = em.convert_by_kindlegen(book_path)
-        if rc == 0 or rc == 1:
-            em.convert_by_ebook_convert(book_path)
+        em.convert_by_kindlegen(book_path)
+        em.convert_by_ebook_convert(book_path)
 
 if __name__ == '__main__':
     main()
