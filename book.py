@@ -38,16 +38,6 @@ class Ebookmaker(object):
             self.basic_info['daili_fetch_delay'] = 1
         if not self.basic_info['daili_fetch_max_num']:
             self.basic_info['daili_fetch_max_num'] = 50
-        if self.basic_info['book_chapter_file_suffic'] == ".md":
-            self.basic_info['book_chapter_title_format_begin'] = '## '
-            self.basic_info['book_chapter_title_format_end'] = '  '
-            self.basic_info['book_chapter_text_format_begin'] = ''
-            self.basic_info['book_chapter_text_format_end'] = ''
-        elif self.basic_info['book_chapter_file_suffic'] == ".txt":
-            self.basic_info['book_chapter_title_format_begin'] = ''
-            self.basic_info['book_chapter_title_format_end'] = ''
-            self.basic_info['book_chapter_text_format_begin'] = ''
-            self.basic_info['book_chapter_text_format_end'] = ''
         #####################################################################################
         user_agent_list = [
             'Mozilla/5.0 (Windows; U; MSIE 9.0; Windows NT 9.0; en-US',
@@ -233,27 +223,20 @@ class Ebookmaker(object):
                 print("文件已缓存: {:<64}".format(write_path))
                 self.semaphore.release()
                 return
-        if self.basic_info['book_chapter_file_suffic'] == ".html":
-            xml_path = os.path.join(dir, 'chapter0.html')
-            xml = minidom.parse(xml_path)
-            html = xml.documentElement
-            html.setAttribute('xml:lang', self.basic_info['book_language'])
-            html_head = html.getElementsByTagName('head')[0]
-            html_head_metas = html_head.getElementsByTagName('meta')
-            for meta in html_head_metas:
-                if meta.hasAttribute('name'):
-                    meta.setAttribute('content', self.basic_info['book_rights'])
-            html_head_title = html_head.getElementsByTagName('title')[0].childNodes[0]
-            html_head_title.nodeValue = 'chapter ' + str(index+1) + ' - 0'
-            html_body = html.getElementsByTagName('body')[0]
-            html_body_h2 = html_body.getElementsByTagName('h2')[0].childNodes[0]
-            html_body_h2.nodeValue = self.book_chapter_urls[index][1]
-        elif self.basic_info['book_chapter_file_suffic'] == ".txt" or self.basic_info['book_chapter_file_suffic'] == ".md":
-            chapter_content = ""
-            chapter_content += self.basic_info['book_chapter_title_format_begin'] + self.book_chapter_urls[index][1] + self.basic_info['book_chapter_title_format_end']
-            chapter_content += '\n\n'
-            if self.basic_info['book_chapter_file_suffic'] == ".md":
-                chapter_content += '\n\n'
+        xml_path = os.path.join(dir, 'chapter0.html')
+        xml = minidom.parse(xml_path)
+        html = xml.documentElement
+        html.setAttribute('xml:lang', self.basic_info['book_language'])
+        html_head = html.getElementsByTagName('head')[0]
+        html_head_metas = html_head.getElementsByTagName('meta')
+        for meta in html_head_metas:
+            if meta.hasAttribute('name'):
+                meta.setAttribute('content', self.basic_info['book_rights'])
+        html_head_title = html_head.getElementsByTagName('title')[0].childNodes[0]
+        html_head_title.nodeValue = 'chapter ' + str(index+1) + ' - 0'
+        html_body = html.getElementsByTagName('body')[0]
+        html_body_h2 = html_body.getElementsByTagName('h2')[0].childNodes[0]
+        html_body_h2.nodeValue = self.book_chapter_urls[index][1]
         retry = self.basic_info['book_fetch_retry_count']
         while retry:
             chapter_html = self.loadData(self.basic_info['book_url'] + self.book_chapter_urls[index][0], host=self.basic_info['book_host'], referer=self.basic_info['book_url'], cookie=cookie, proxy_pool=proxy_pool)
@@ -272,32 +255,20 @@ class Ebookmaker(object):
             self.semaphore.release()
             return
         for content in re.findall(re.compile(self.basic_info['book_chapter_content_re']), chapter_html):
-            if self.basic_info['book_chapter_file_suffic'] == ".html":
-                html_body_p = xml.createElement('p')
-                html_body.appendChild(html_body_p)
-                html_body_p_text = xml.createTextNode(content)
-                html_body_p.appendChild(html_body_p_text)
-                html_body_p.setAttribute('class', 'a')
-            elif self.basic_info['book_chapter_file_suffic'] == ".txt" or self.basic_info['book_chapter_file_suffic'] == ".md":
-                chapter_content += self.basic_info['book_chapter_text_format_begin'] + content + self.basic_info['book_chapter_text_format_end']
-                if self.basic_info['book_chapter_file_suffic'] == ".md":
-                    chapter_content += '\n\n'
-                elif self.basic_info['book_chapter_file_suffic'] == ".txt":
-                    chapter_content += '\n'
+            html_body_p = xml.createElement('p')
+            html_body.appendChild(html_body_p)
+            html_body_p_text = xml.createTextNode(content)
+            html_body_p.appendChild(html_body_p_text)
+            html_body_p.setAttribute('class', 'a')
         with open(write_path, 'w+', encoding='utf-8') as f:
-            if self.basic_info['book_chapter_file_suffic'] == ".html":
-                xml.writexml(f, newl = '\n', addindent = '\t', encoding='utf-8')
-                xml.unlink()
-            elif self.basic_info['book_chapter_file_suffic'] == ".txt" or self.basic_info['book_chapter_file_suffic'] == ".md":
-                f.write(chapter_content)
+            xml.writexml(f, newl = '\n', addindent = '\t', encoding='utf-8')
+            xml.unlink()
             print("写入成功: {}".format(write_path))
         self.semaphore.release()
 
     def fetch_and_store_urls(self,dir):
         print('开始抓取所有章节并存入文件...')
-        book_chapters_path = dir
-        if self.basic_info['book_chapter_file_suffic'] == ".html":
-            book_chapters_path = os.path.join(dir, 'OEBPS')
+        book_chapters_path = os.path.join(dir, 'OEBPS')
         self.basic_info['work_thread_num'] = len(self.proxyPool) * 3
         if self.basic_info['book_fetch_max_thread_num'] and self.basic_info['book_fetch_max_thread_num'] > 0:
             self.basic_info['work_thread_num'] = self.basic_info['book_fetch_max_thread_num']
@@ -310,8 +281,7 @@ class Ebookmaker(object):
             t.start()
             work_threads.append(t)
         wait_all_child_task_done(work_threads, print_char='')
-        if self.basic_info['book_chapter_file_suffic'] == ".html":
-            os.remove(os.path.join(book_chapters_path, 'chapter0.html'))
+        os.remove(os.path.join(book_chapters_path, 'chapter0.html'))
         time_end = datetime.datetime.now()
         print('完成！耗时：{}'.format(time_end - time_start))
 
@@ -452,20 +422,6 @@ class Ebookmaker(object):
         zfile.write('mimetype')
         zfile.close()
         os.chdir(current_path)
-        time_end = datetime.datetime.now()
-        print('完成！耗时：{}'.format(time_end - time_start))
-
-    def write_md_title(self,dir):
-        print('写入标题和目录...')
-        time_start = datetime.datetime.now()
-        path = os.path.join(dir, self.basic_info['book_name'] + self.basic_info['book_chapter_file_suffic'])
-        with open(path, 'w+', encoding='utf-8') as f:
-            f.write('# 目录 \n\n')
-            f.write('--------------------\n\n')
-            for chapter_url in self.book_chapter_urls:
-                chapter_title = chapter_url[1]
-                f.write('  - [' + chapter_title + '](#' + re.sub(' |？|，|！|……', '-', chapter_title) + ')\n')
-            f.write('\n')
         time_end = datetime.datetime.now()
         print('完成！耗时：{}'.format(time_end - time_start))
 
@@ -625,16 +581,13 @@ def main():
     book_path = os.path.join(em.basic_info['ebooks_labrary_path'], em.basic_info['book_name'])
     copy_dir('template', book_path)
     print('拷贝封面图片到书籍生成目录...')
-    book_cover_path = os.path.join(book_path, 'cover.jpg')
-    if em.basic_info['book_chapter_file_suffic'] == ".html":
-        book_cover_path = os.path.join(book_path, 'OEBPS', 'cover.jpg')
+    book_cover_path = os.path.join(book_path, 'OEBPS', 'cover.jpg')
     if os.path.exists(os.path.join(book_path, 'cover.pic')):
         shutil.move(os.path.join(book_path, 'cover.pic'), book_cover_path)
-    if em.basic_info['book_chapter_file_suffic'] == ".html":
-        chapter_template_file = os.path.join(book_path, 'OEBPS', 'chapter0.html')
-        if not os.path.exists(chapter_template_file):
-            print('章节模板文件不存在！请检查后重试。')
-            return
+    chapter_template_file = os.path.join(book_path, 'OEBPS', 'chapter0.html')
+    if not os.path.exists(chapter_template_file):
+        print('章节模板文件不存在！请检查后重试。')
+        return
 
     em.fetch_and_store_urls(book_path)
     if len(em.missing_urls):
@@ -643,7 +596,7 @@ def main():
 
     # Use kaf-cli to convert ePub book
     '''
-    TBD: vs code reg need to do after merge chapters:
+    TBD: remove some unexpected characters, vs code reg need to do after merge chapters:
         ”([^\n]).*? => "\n$1
         (“.*?[^”]$)\n$ => $1"\n
         " => ”
@@ -652,20 +605,13 @@ def main():
         ”\n， => ”，
         &nbsp => ''
     '''
-    if em.basic_info['book_chapter_file_suffic'] == ".md":
-        em.write_md_title(book_path)
-        em.write_chapters(book_path)
-        em.convert_by_ebook_convert(book_path)
-    elif em.basic_info['book_chapter_file_suffic'] == ".txt":
-        em.write_chapters(book_path)
-    elif em.basic_info['book_chapter_file_suffic'] == ".html":
-        em.write_content_opf(book_path)
-        em.write_toc_ncx(book_path)
-        em.write_cover_html(book_path)
-        em.write_book_toc_html(book_path)
-        em.create_epub(book_path)
-        em.convert_by_kindlegen(book_path)
-        em.convert_by_ebook_convert(book_path)
+    em.write_content_opf(book_path)
+    em.write_toc_ncx(book_path)
+    em.write_cover_html(book_path)
+    em.write_book_toc_html(book_path)
+    em.create_epub(book_path)
+    em.convert_by_kindlegen(book_path)
+    em.convert_by_ebook_convert(book_path)
 
 if __name__ == '__main__':
     main()
