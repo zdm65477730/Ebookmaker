@@ -7,7 +7,6 @@
     "book_host": "www.xbooktxt.net",
     "book_referer": "https://www.xbooktxt.net/2_2588/685752.html",
     "book_cookie": "",
-    "book_chapter_file_suffic": ".html",
     "book_fetch_retry_count": 5,
     "book_fetch_delay": 3,
     "book_fetch_max_thread_num": 0,
