@@ -26,7 +26,6 @@
 | book_host                          | `www.xbiquge.la`                                              | 书籍网站主页                                               |
 | book_referer                       | `https://www.xbiquge.la/66/66747/26547971.html`               | 从哪个页面链接过来                                          |
 | book_cookie                        | `UM_distinctid=17accce5a4f743--1fa4aa-17accce5a50d31`         | 请求的cookie信息，可以为空                                  |
-| book_chapter_file_suffic           | `.html`                                                       | 存储的章节后缀名                                            |
 | book_fetch_retry_count             | `10`                                                          | 书籍章节爬取失败重试次数                                     |
 | book_fetch_delay                   | `5`                                                           | 书籍章节爬取失败重试时间间隔                                 |
 | book_fetch_max_thread_num          | `10`                                                          | 书籍章节爬取最大线程数，如果为0，则自动根据设置为筛选的代码IP数 |
