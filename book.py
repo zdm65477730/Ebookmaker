@@ -520,7 +520,6 @@ class Ebookmaker(object):
 
     def convert_by_ebook_convert(self,dir):
         '''
-        #fmt.Print(fmt.Sprintf("ebook-convert %s %s --authors %s --comments '%s' --level1-toc '//h:h1' --level2-toc '//h:h2' --language '%s'\n", Tmp, Mobi, Author, Comment, Lang))
         ebook-convert 1.epub 1.mobi \
             --input-profile=kindle --output-profile=kindle_pw3 --extra-css=epub.css \
             --expand-css --remove-paragraph-spacing-indent-size=2 --remove-first-image --chapter-mark=pagebreak \
