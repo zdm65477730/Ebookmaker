@@ -7,7 +7,6 @@
     "book_host": "www.xbiquge.la",
     "book_referer": "https://www.xbiquge.la/66/66747/26547971.html",
     "book_cookie": "",
-    "book_chapter_file_suffic": ".html",
     "book_fetch_retry_count": 100,
     "book_fetch_delay": 1,
     "book_fetch_max_thread_num": 0,
