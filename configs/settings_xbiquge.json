@@ -18,6 +18,8 @@
     "book_cover_url_re": "<meta property=\"og:image\" content=\"(https://www.*?jpg)\"/>",
     "book_chapter_list_re": "<dd><a href=\\'/66/66747/([0-9]{8}\\.html)\\' >(.*?)</a></dd>",
     "book_chapter_content_re": "<br />&nbsp;&nbsp;&nbsp;&nbsp;(.*?)\r<br />",
+    "book_chapter_content_repace_re_group": [
+    ],
     "daili_url_base": "https://ip.jiangxianli.com/?page=",
     "daili_host": "ip.jiangxianli.com",
     "daili_cookie": "",

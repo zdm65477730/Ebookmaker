@@ -215,6 +215,16 @@ class Ebookmaker(object):
         time_end = datetime.datetime.now()
         print("完成！耗时：{}\n书名：{}\n作者：{}\n类型：{}\n最后更新时间：{}\n简介：{}\n".format(time_end - time_start, self.basic_info['book_name'], self.basic_info['book_author'], self.basic_info['book_subject'], self.basic_info['book_date'], self.basic_info['book_description']))
 
+    def book_text_correction(self,content_list):
+        contents = ""
+        for content in content_list:
+            contents += content + '\n'
+        if self.basic_info['book_chapter_content_repace_re_group']:
+            for pattern_and_repl in self.basic_info['book_chapter_content_repace_re_group']:
+                if re.search(pattern_and_repl['pattern'], contents, re.M) != None:
+                    contents = re.sub(pattern_and_repl['pattern'], pattern_and_repl['repl'], contents, re.M)
+        return re.split(r'\n', contents)
+
     def work(self,dir,index,cookie=None,proxy_pool=None):
         self.semaphore.acquire()
         write_path = os.path.join(dir, 'chapter' + str(index+1) + '.html')
@@ -254,7 +264,8 @@ class Ebookmaker(object):
                 self.missing_urls.append(self.book_chapter_urls[index])
             self.semaphore.release()
             return
-        for content in re.findall(re.compile(self.basic_info['book_chapter_content_re']), chapter_html):
+        content_list = self.book_text_correction(re.findall(re.compile(self.basic_info['book_chapter_content_re']), chapter_html))
+        for content in content_list:
             html_body_p = xml.createElement('p')
             html_body.appendChild(html_body_p)
             html_body_p_text = xml.createTextNode(content)
@@ -578,17 +589,6 @@ def main():
         print('仍然存在获取失败的章节！请重试！')
         return
 
-    # Use kaf-cli to convert ePub book
-    '''
-    TBD: remove some unexpected characters, vs code reg need to do after merge chapters:
-        ”([^\n]).*? => "\n$1
-        (“.*?[^”]$)\n$ => $1"\n
-        " => ”
-        'i' => ''
-        ，; => '，'
-        ”\n， => ”，
-        &nbsp => ''
-    '''
     em.write_content_opf(book_path)
     em.write_toc_ncx(book_path)
     em.write_cover_html(book_path)
