@@ -425,22 +425,6 @@ class Ebookmaker(object):
         time_end = datetime.datetime.now()
         print('完成！耗时：{}'.format(time_end - time_start))
 
-    def write_chapters(self,dir):
-        print('写入所有章节...')
-        time_start = datetime.datetime.now()
-        res = ""
-        for chapter_url in self.book_chapter_urls:
-            file = chapter_url[1] + '.html'
-            path = os.path.join(dir, file)
-            with open(path, 'r', encoding='utf-8') as file:
-                content = file.read()
-            res += content
-        path = os.path.join(dir, self.basic_info['book_name'] + '.html')
-        with open(path, 'a+', encoding='utf-8') as f:
-            f.write(res)
-        time_end = datetime.datetime.now()
-        print('完成！耗时：{}'.format(time_end - time_start))
-
     def convert_by_kindlegen(self,dir):
         print('转换为Kindle电子书格式...')
         time_start = datetime.datetime.now()
