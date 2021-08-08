@@ -200,6 +200,7 @@ class Ebookmaker(object):
         self.basic_info['book_description'] = re.compile(self.basic_info['book_description_re']).findall(res)[0]
         self.basic_info['book_cover_url'] = re.compile(self.basic_info['book_cover_url_re']).findall(res)[0]
         self.book_chapter_urls = re.compile(self.basic_info['book_chapter_list_re']).findall(res)
+        self.book_chapter_urls.insert(3030, ('745990.html','第3031章 尊者秘闻'))
         print('开始创建书籍存档目录：%s...' %dir)
         book_store_path = os.path.join(dir, self.basic_info['book_name'])
         if not os.path.exists(book_store_path):
@@ -221,8 +222,7 @@ class Ebookmaker(object):
             contents += content + '\n'
         if self.basic_info['book_chapter_content_repace_re_group']:
             for pattern_and_repl in self.basic_info['book_chapter_content_repace_re_group']:
-                if re.search(pattern_and_repl['pattern'], contents, re.M) != None:
-                    contents = re.sub(pattern_and_repl['pattern'], pattern_and_repl['repl'], contents, re.M)
+                contents = re.sub(pattern_and_repl['pattern'], pattern_and_repl['repl'], contents, flags=re.M)
         return re.split(r'\n', contents)
 
     def work(self,dir,index,cookie=None,proxy_pool=None):
