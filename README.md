@@ -37,7 +37,7 @@
 | book_cover_url_re                    | `<meta property="og:image" content="(https://www.*?jpg)"/>`   | 书籍封面正则，注意`"` `\` `'` `.`需要用`\`转义               |
 | book_chapter_list_re                 | `<dd><a href='/66/66747/([0-9]{8}\.html)' >(.*?)</a></dd>`    | 书籍章节名正则，注意`"` `\` `'` `.`需要用`\`转义             |
 | book_chapter_content_re              | `<br />&nbsp;&nbsp;&nbsp;&nbsp;(.*?)\r<br />`                 | 书籍章节正文正则，注意`"` `\` `'` `.`需要用`\`转义           |
-| book_chapter_content_repace_re_group | `[ {"pattern": "、“", "repl": "：“"} ]`                       | 书籍章节正文正则，注意`"` `\` `'` `.`需要用`\`转义           |
+| book_chapter_content_repace_re_group | `[ {"pattern": "、“", "repl": "：“"} ]`                       | 书籍章节正文校正正则，注意`"` `\` `'` `.`需要用`\`转义        |
 | daili_url_base                       | `https://ip.jiangxianli.com/?page=`                           | 代理IP提供页地址                                           |
 | daili_host                           | `ip.jiangxianli.com`                                          | 代理IP提供网址                                             |
 | daili_cookie                         | `UM_distinctid=17accce5a4f743--1fa4aa-17accce5a50d31`         | 获取代理IP使用的cookie                                     |
