@@ -19,6 +19,8 @@
     "book_chapter_list_re": "<dd><a href=\\'/66/66747/([0-9]{8}\\.html)\\' >(.*?)</a></dd>",
     "book_chapter_content_re": "<br />&nbsp;&nbsp;&nbsp;&nbsp;(.*?)\r<br />",
     "book_chapter_content_repace_re_group": [
+        {"pattern": "([\u4E00-\u9FFF])[*]{0,}\(([\u4E00-\u9FFF])[a-z]+[ā|á|ǎ|à|ō|ó|ǒ|ò|ē|é|ě|è|ī|í|ǐ|ì|ū|ú|ǔ|ù|ǖ|ǘ|ǚ|ǜ]{0,}[a-z]{0,}\)", "repl": "\\g<1>\\g<2>"},
+        {"pattern": "\(\(([\u4E00-\u9FFF])[a-z]+[ā|á|ǎ|à|ō|ó|ǒ|ò|ē|é|ě|è|ī|í|ǐ|ì|ū|ú|ǔ|ù|ǖ|ǘ|ǚ|ǜ][a-z]+\)[a-z]+[ā|á|ǎ|à|ō|ó|ǒ|ò|ē|é|ě|è|ī|í|ǐ|ì|ū|ú|ǔ|ù|ǖ|ǘ|ǚ|ǜ][a-z]+\)", "repl": "\\g<1>\\g<1>"}
     ],
     "daili_url_base": "https://ip.jiangxianli.com/?page=",
     "daili_host": "ip.jiangxianli.com",
