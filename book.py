@@ -598,7 +598,7 @@ def main():
     em.write_book_toc_html(book_path)
     em.create_epub(book_path)
     rc = em.convert_by_kindlegen(book_path)
-    if rc != 0:
+    if rc == 0:
         em.convert_by_ebook_convert(book_path)
 
 if __name__ == '__main__':
