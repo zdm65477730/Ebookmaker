@@ -448,8 +448,10 @@ class Ebookmaker(object):
         kindlegen_tool = os.path.join(self.basic_info['tools_base_path'], kindlegen_tool)
         if not kindlegen_tool:
             print('kindlegen工具路径未配置！请先安装配置后重试！')
+            return -1
         elif not os.path.isfile(kindlegen_tool):
             print('kindlegen工具不存在于脚本同目录下tools所在文件夹！请放入后重试！')
+            return -2
         else:
             lang = self.basic_info['book_language']
             if lang == 'zh-CN':
@@ -465,8 +467,10 @@ class Ebookmaker(object):
             time_end = datetime.datetime.now()
             if proc.returncode != 0 and proc.returncode != 1:
                 print('失败! 耗时：{} 返回值：{}\n'.format(time_end - time_start, proc.returncode))
+                return proc.returncode
             else:
                 print('完成！耗时：{}'.format(time_end - time_start))
+                return 0 
 
     def convert_by_ebook_convert(self,dir):
         '''
@@ -593,8 +597,9 @@ def main():
     em.write_cover_html(book_path)
     em.write_book_toc_html(book_path)
     em.create_epub(book_path)
-    em.convert_by_kindlegen(book_path)
-    em.convert_by_ebook_convert(book_path)
+    rc = em.convert_by_kindlegen(book_path)
+    if rc != 0:
+        em.convert_by_ebook_convert(book_path)
 
 if __name__ == '__main__':
     main()
