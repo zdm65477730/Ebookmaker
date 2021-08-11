@@ -47,7 +47,8 @@
         {"pattern": "”\n([的]{0,}一)", "repl": "”\\g<1>"},
         {"pattern": "此地，乃我通天剑阁，亿万年前", "repl": "此地，乃我通天剑阁禁地，亿万年前"},
         {"pattern": "我\\*\\*", "repl": "我他么"},
-        {"pattern": "我##", "repl": "我去"}
+        {"pattern": "我##", "repl": "我去"},
+        {"pattern": "并且这四人，依旧保持着完美的状", "repl": "并且这四人，依旧保持着完美的状态。"}
     ],
     "daili_url_base": "https://ip.jiangxianli.com/?page=",
     "daili_host": "ip.jiangxianli.com",
