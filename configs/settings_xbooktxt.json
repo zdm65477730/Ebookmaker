@@ -22,6 +22,7 @@
         {"pattern": "(“[^”\n]+”)\n(、“[^”\n]+”)\n([^\n]+)\n", "repl": "\\g<1>\\g<2>\\g<3>\n"},
         {"pattern": "、“", "repl": "：“"},
         {"pattern": ":", "repl": "："},
+        {"pattern": ",", "repl": "，"},
         {"pattern": "&nbsp;", "repl": ""},
         {"pattern": "？！", "repl": "？"},
         {"pattern": "!", "repl": "！"},
