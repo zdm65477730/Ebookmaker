@@ -56,7 +56,8 @@
         {"pattern": "(传送出去的)数年(，赵灵珊不屑的看了眼田光，嗤笑说道。)", "repl": "\\g<1>瞬间\\g<2>"},
         {"pattern": "(竟然是)他(们两个，有意思。)", "repl": "\\g<1>她\\g<2>"},
         {"pattern": "(若是大威王朝要一直抱着他们天下无双的姿态，早)上(要倒大霉。)", "repl": "\\g<1>晚\\g<2>"},
-        {"pattern": "(萧惊鸿可不是诸葛青他们能比)你(的)", "repl": "\\g<1>拟\\g<2>"}
+        {"pattern": "(萧惊鸿可不是诸葛青他们能比)你(的)", "repl": "\\g<1>拟\\g<2>"},
+        {"pattern": "(孟兴珏连)(一招都施展出来了)", "repl": "\\g<1>这\\g<2>"}
     ],
     "daili_url_base": "https://ip.jiangxianli.com/?page=",
     "daili_host": "ip.jiangxianli.com",
