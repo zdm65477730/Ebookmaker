@@ -28,6 +28,7 @@
         {"pattern": "!", "repl": "！"},
         {"pattern": "[?]“", "repl": "“"},
         {"pattern": "^————————————\n", "repl": ""},
+        {"pattern": "——\n", "repl": "——"},
         {"pattern": "^！！！”\n", "repl": ""},
         {"pattern": "^！\n", "repl": ""},
         {"pattern": "^！([^\n]+)$", "repl": "\\g<1>"},
@@ -60,7 +61,9 @@
         {"pattern": "(孟兴珏连)(一招都施展出来了)", "repl": "\\g<1>这\\g<2>"},
         {"pattern": "(大威王朝的诸多强者，彻底恢复)信息", "repl": "\\g<1>信心"},
         {"pattern": "林萧", "repl": "秦尘"},
-        {"pattern": "(能和帝心少主)十(分高下)", "repl": "\\g<1>难\\g<2>"}
+        {"pattern": "(能和帝心少主)十(分高下)", "repl": "\\g<1>难\\g<2>"},
+        
+        {"pattern": "xxxx", "repl": "xxxx"}
     ],
     "daili_url_base": "https://ip.jiangxianli.com/?page=",
     "daili_host": "ip.jiangxianli.com",
