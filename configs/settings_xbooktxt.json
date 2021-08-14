@@ -63,7 +63,7 @@
         {"pattern": "(能和帝心少主)十(分高下)", "repl": "\\g<1>难\\g<2>"},
         {"pattern": "(天)才(有天)", "repl": "\\g<1>外\\g<2>"},
         {"pattern": "冲向(叶玄)", "repl": "\\g<1>秦尘"},
-        {"pattern": "(天)才(有天)", "repl": "\\g<1>外\\g<2>"},
+        {"pattern": "(你们若是)相(对他们动手)", "repl": "\\g<1>想\\g<2>"},
         {"pattern": "xxxx", "repl": "xxxx"}
     ],
     "daili_url_base": "https://ip.jiangxianli.com/?page=",
