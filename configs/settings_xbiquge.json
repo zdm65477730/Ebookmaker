@@ -23,10 +23,10 @@
         {"pattern": "(“[^”\n]+”)([^\n，]+)", "repl": "\\g<1>\n\\g<2>"},
         {"pattern": "([\u4E00-\u9FFF]{0,1})[*]{0,}[(]{0,1}[(]{1}([\u4E00-\u9FFF]{1})[a-z]+[ā|á|ǎ|à|ō|ó|ǒ|ò|ē|é|ě|è|ī|í|ǐ|ì|ū|ú|ǔ|ù|ǖ|ǘ|ǚ|ǜ]{0,}[a-z]{0,}[)]{1}[a-z]{0,}[ā|á|ǎ|à|ō|ó|ǒ|ò|ē|é|ě|è|ī|í|ǐ|ì|ū|ú|ǔ|ù|ǖ|ǘ|ǚ|ǜ]{0,}[a-z]{0,}[)]{0,1}", "repl": "\\g<1>\\g<2>"}
     ],
-    "daili_url_base": "https://ip.jiangxianli.com/?page=",
+    "daili_url_base": "https://www.kuaidaili.com/free/inha/",
     "daili_host": "ip.jiangxianli.com",
     "daili_cookie": "",
-    "daili_re": "data-url=\"http://(\\d+\\.\\d+\\.\\d+\\.\\d+):(\\d+)\"",
+    "daili_re": "<td data-title=\"IP\">(\\d+\\.\\d+\\.\\d+\\.\\d+)</td>\n                    <td data-title=\"PORT\">(\\d+)</td>",
     "daili_web_num": 20,
     "daili_fetch_max_num": 100,
     "daili_fetch_retry_count": 5,

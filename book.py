@@ -473,26 +473,11 @@ class Ebookmaker(object):
                 return 0 
 
     def convert_by_ebook_convert(self,dir):
-        '''
-        ebook-convert 1.epub 1.mobi \
-            --input-profile=kindle --output-profile=kindle_pw3 --extra-css=epub.css \
-            --expand-css --remove-paragraph-spacing-indent-size=2 --remove-first-image --chapter-mark=pagebreak \
-            --prefer-metadata-cover --insert-metadata --level1-toc=//h:h1 --level2-toc=//h:h2 --level3-toc=//h:h3 \
-            --max-toc-links=0 --use-auto-toc --mobi-toc-at-start --pretty-print \
-            --title="武神主宰" \
-            --authors="暗魔师" \
-            --cover=cover.jpg \
-            --comments="天武大陆一代传奇秦尘，因好友背叛意外陨落武域。三百年后，他转生在一个受尽欺凌的王府私生子身上，利用前世造诣，凝神功、炼神丹，逆天而上，强势崛起，从此踏上一段震惊大陆的惊世之旅。" \
-            --publisher="ireader" \
-            --tags="小说" \
-            --book-producer="越光" \
-            --language=zh
-        '''
         print('转换为azw3电子书格式...')
         time_start = datetime.datetime.now()
         sysstr = platform.system()
         if (sysstr == "Windows"):
-            ebook_convert_tool = self.basic_info['ebook_convert_win']  # powershell should add a '&' at the begin of the command if there are spaces in the path, while cmd no need.
+            ebook_convert_tool = self.basic_info['ebook_convert_win']
         elif (sysstr == "Linux"):
             ebook_convert_tool = self.basic_info['ebook_convert_linux']
         elif (sysstr == "Mac"):
@@ -512,7 +497,7 @@ class Ebookmaker(object):
             ebook_convert_path = '\"' + ebook_convert_tool + '\" '
             epub_path = os.path.join(dir, self.basic_info['book_name'] + '.epub')
             output_path = os.path.join(dir, self.basic_info['book_name'] + '.azw3')
-            ebook_convert_command = ebook_convert_path + epub_path + ' ' + output_path + ' --language=' + lang + ' --input-profile=kindle --output-profile=kindle_pw3 --max-toc-links=0 --use-auto-toc --mobi-toc-at-start --pretty-print --prefer-metadata-cover'
+            ebook_convert_command = ebook_convert_path + epub_path + ' ' + output_path + ' --language=' + lang + ' --input-profile=kindle --output-profile=kindle_pw3 --expand-css --remove-paragraph-spacing-indent-size=2 --remove-first-image --chapter-mark=pagebreak --max-toc-links=0 --use-auto-toc --mobi-toc-at-start --pretty-print --prefer-metadata-cover --insert-metadata'
             proc = subprocess.Popen(ebook_convert_command,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,encoding="utf-8")
             while proc.poll() is None:
                 line = proc.stdout.readline()
