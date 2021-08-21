@@ -264,7 +264,7 @@ class Ebookmaker(object):
                 self.missing_urls.append(self.book_chapter_urls[index])
             self.semaphore.release()
             return
-        content_list = self.book_text_correction(re.findall(re.compile(self.basic_info['book_chapter_content_re']), chapter_html))
+        content_list = self.book_text_correction(index, re.findall(re.compile(self.basic_info['book_chapter_content_re']), chapter_html))
         for content in content_list:
             html_body_p = xml.createElement('p')
             html_body.appendChild(html_body_p)
