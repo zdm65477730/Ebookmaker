@@ -215,13 +215,14 @@ class Ebookmaker(object):
         time_end = datetime.datetime.now()
         print("完成！耗时：{}\n书名：{}\n作者：{}\n类型：{}\n最后更新时间：{}\n简介：{}\n".format(time_end - time_start, self.basic_info['book_name'], self.basic_info['book_author'], self.basic_info['book_subject'], self.basic_info['book_date'], self.basic_info['book_description']))
 
-    def book_text_correction(self,content_list):
+    def book_text_correction(self,index,content_list):
         contents = ""
         for content in content_list:
             contents += content + '\n'
-        if self.basic_info['book_chapter_content_repace_re_group']:
-            for pattern_and_repl in self.basic_info['book_chapter_content_repace_re_group']:
-                contents = re.sub(pattern_and_repl['pattern'], pattern_and_repl['repl'], contents, flags=re.M)
+        if self.basic_info['book_chapter_content_replace_re_group']:
+            for book_chapter_content_replace_re in self.basic_info['book_chapter_content_replace_re_group']:
+                if book_chapter_content_replace_re['chapterIndex'] == str(index+1) or book_chapter_content_replace_re['chapterIndex'] == '*':
+                    contents = re.sub(book_chapter_content_replace_re['pattern'], book_chapter_content_replace_re['repl'], contents, flags=re.M)
         return re.split(r'\n', contents)
 
     def work(self,dir,index,cookie=None,proxy_pool=None):

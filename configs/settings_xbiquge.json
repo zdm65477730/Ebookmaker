@@ -18,10 +18,10 @@
     "book_cover_url_re": "<meta property=\"og:image\" content=\"(https://www.*?jpg)\"/>",
     "book_chapter_list_re": "<dd><a href=\\'/66/66747/([0-9]{8}\\.html)\\' >(.*?)</a></dd>",
     "book_chapter_content_re": "<br />&nbsp;&nbsp;&nbsp;&nbsp;(.*?)\r<br />",
-    "book_chapter_content_repace_re_group": [
-        {"pattern": "♂领♂域♂文♂学♂*♂♂ng♂♂g\n", "repl": ""},
-        {"pattern": "(“[^”\n]+”)([^\n，]+)", "repl": "\\g<1>\n\\g<2>"},
-        {"pattern": "([\u4E00-\u9FFF]{0,1})[*]{0,}[(]{0,1}[(]{1}([\u4E00-\u9FFF]{1})[a-z]+[ā|á|ǎ|à|ō|ó|ǒ|ò|ē|é|ě|è|ī|í|ǐ|ì|ū|ú|ǔ|ù|ǖ|ǘ|ǚ|ǜ]{0,}[a-z]{0,}[)]{1}[a-z]{0,}[ā|á|ǎ|à|ō|ó|ǒ|ò|ē|é|ě|è|ī|í|ǐ|ì|ū|ú|ǔ|ù|ǖ|ǘ|ǚ|ǜ]{0,}[a-z]{0,}[)]{0,1}", "repl": "\\g<1>\\g<2>"}
+    "book_chapter_content_replace_re_group": [
+        {"chapterIndex": "*", "pattern": "♂领♂域♂文♂学♂*♂♂ng♂♂g\n", "repl": ""},
+        {"chapterIndex": "*", "pattern": "(“[^”\n]+”)([^\n，]+)", "repl": "\\g<1>\n\\g<2>"},
+        {"chapterIndex": "*", "pattern": "([\u4E00-\u9FFF]{0,1})[*]{0,}[(]{0,1}[(]{1}([\u4E00-\u9FFF]{1})[a-z]+[ā|á|ǎ|à|ō|ó|ǒ|ò|ē|é|ě|è|ī|í|ǐ|ì|ū|ú|ǔ|ù|ǖ|ǘ|ǚ|ǜ]{0,}[a-z]{0,}[)]{1}[a-z]{0,}[ā|á|ǎ|à|ō|ó|ǒ|ò|ē|é|ě|è|ī|í|ǐ|ì|ū|ú|ǔ|ù|ǖ|ǘ|ǚ|ǜ]{0,}[a-z]{0,}[)]{0,1}", "repl": "\\g<1>\\g<2>"}
     ],
     "daili_url_base": "https://www.kuaidaili.com/free/inha/",
     "daili_host": "ip.jiangxianli.com",
