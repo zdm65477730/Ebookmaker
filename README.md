@@ -6,6 +6,11 @@
 
 自动爬取小说，并生成ePub格式，最后转换成Kindle可用的电子书格式。
 
+## 环境准备
+
+  1. 由于部分小说网站使用[Brotli](https://www.jianshu.com/p/2a25aebfb64b)这种无损数据压缩算法，因此需要安装Python模块Brotli
+  `pip install Brotli`
+
 ## 如何使用
 
   1. 将Ebookmaker存储库克隆到您的计算机。<pre><code>git clone https://github.com/zdm65477730/Ebookmaker</code></pre>

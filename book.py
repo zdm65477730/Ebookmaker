@@ -50,25 +50,25 @@ class Ebookmaker(object):
             'Mozilla/5.0 (Windows NT 6.2; Win64; x64; rv:16.0.1) Gecko/20121011 Firefox/16.0.1',
             'Mozilla/5.0 (X11; Ubuntu; Linux i686; rv:15.0) Gecko/20100101 Firefox/15.0.1',
             'Mozilla/5.0 (iPad; CPU OS 6_0 like Mac OS X) AppleWebKit/536.26 (KHTML, like Gecko) Version/6.0 Mobile/10A5355d Safari/8536.2',
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.5060.53 Safari/537.36 Edg/103.0.1264.37'
         ]
         self.headers = { 
-            'Accept':'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9',
-            'Accept-encoding':'gzip,deflate,br',
-            'Accept-Language':'zh-CN,zh;q=0.9',
-            'Connection':'keep-alive',
-            'Cache-Control':'max-age=0',
-            'sec-ch-ua':'" Not;A Brand";v="99", "Google Chrome";v="91", "Chromium";v="91"',
+            'accept':'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9',
+            'accept-encoding':'gzip,deflate,br',
+            'accept-language':'zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6',
+            'connection':'keep-alive',
+            'cache-Control':'max-age=0',
+            'sec-ch-ua':'" Not;A Brand";v="99", "Microsoft Edge";v="103", "Chromium";v="103"',
             'sec-ch-ua-mobile':'?0',
-            'Sec-Fetch-Dest':'document',
-            'Sec-Fetch-Mode':'navigate',
-            'Sec-Fetch-Site':'same-origin',
-            'Sec-Fetch-User':'?1',
-            'Upgrade-Insecure-Requests':'1',
-            'User-Agent':random.choice(user_agent_list),
-            'Cookie':self.basic_info['book_cookie'],
-            'Host':self.basic_info['book_host'],
-            'Referer':self.basic_info['book_referer']
+            'sec-fetch-dest':'document',
+            'sec-fetch-mode':'navigate',
+            'sec-fetch-site':'none',
+            'sec-fetch-user':'?1',
+            'upgrade-insecure-requests':'1',
+            'user-agent':random.choice(user_agent_list),
+            'cookie':self.basic_info['book_cookie'],
+            'host':self.basic_info['book_host'],
+            'referer':self.basic_info['book_referer']
         }
         self.basic_info['work_thread_num'] = self.basic_info['daili_web_num']
         self.semaphore = threading.BoundedSemaphore(self.basic_info['work_thread_num'])
@@ -84,9 +84,9 @@ class Ebookmaker(object):
             referer = ''
         if cookie == None:
             cookie = ''
-        self.headers.update({'Cookie': cookie})
-        self.headers.update({'Host': host})
-        self.headers.update({'Referer': referer})
+        self.headers.update({'cookie': cookie})
+        self.headers.update({'host': host})
+        self.headers.update({'referer': referer})
         try:
             if proxy_pool == None:
                 response = requests.get(url, headers=self.headers, verify=False, stream=stream_mode, timeout=(10,10))
@@ -101,7 +101,7 @@ class Ebookmaker(object):
         if stream_mode == True:
             return response.content
         elif response.encoding:
-            if response.encoding == 'ISO-8859-1':
+            if response.encoding == 'ISO-8859-1' or response.encoding == 'iso-8859-1' or response.encoding == 'gb2312' or response.encoding == 'GB2312':
                 encodings = requests.utils.get_encodings_from_content(response.text)
                 if encodings:
                     encoding = encodings[0]
@@ -200,6 +200,7 @@ class Ebookmaker(object):
         self.basic_info['book_description'] = re.compile(self.basic_info['book_description_re']).findall(res)[0]
         self.basic_info['book_cover_url'] = re.compile(self.basic_info['book_cover_url_re']).findall(res)[0]
         self.book_chapter_urls = re.compile(self.basic_info['book_chapter_list_re']).findall(res)
+        # self.book_chapter_urls.insert(3030, ('745991.html', '第3031章 尊者秘闻'))
         print('开始创建书籍存档目录：%s...' %dir)
         book_store_path = os.path.join(dir, self.basic_info['book_name'])
         if not os.path.exists(book_store_path):
