@@ -8,8 +8,7 @@
 
 ## 环境准备
 
-  1. 由于部分小说网站使用[Brotli](https://www.jianshu.com/p/2a25aebfb64b)这种无损数据压缩算法，因此需要安装Python模块Brotli
-  `pip install Brotli`
+  1. 由于部分小说网站使用[Brotli](https://www.jianshu.com/p/2a25aebfb64b)这种无损数据压缩算法，因此需要安装Python模块Brotli <pre><code>pip install Brotli</code></pre>
 
 ## 如何使用
 
