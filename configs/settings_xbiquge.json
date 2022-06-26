@@ -40,5 +40,5 @@
     "kindlegen_book_compression_level": "1",
     "ebook_convert_linux": "/usr/bin/ebook-convert",
     "ebook_convert_mac": "/usr/bin/ebook-convert",
-    "ebook_convert_win": "D:\\OneDrive - Ericsson\\Tools\\Calibre Portable\\Calibre\\ebook-convert.exe"
+    "ebook_convert_win": "D:\\Tools\\Calibre Portable\\Calibre\\ebook-convert.exe"
 }
