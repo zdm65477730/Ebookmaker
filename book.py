@@ -15,6 +15,7 @@ import shutil
 import json
 import time
 import zipfile
+import argparse
 from xml.dom import minidom
 from urllib3.exceptions import InsecureRequestWarning
 from urllib import error
@@ -582,50 +583,67 @@ def copy_dir(src_path, dest_path):
             copy_dir(os.path.join(src_path, file), os.path.join(dest_path, file))
 
 def main():
+    parser = argparse.ArgumentParser(prog="book.py", usage="%(prog)s [[-c]/[--convert_only] [-n]/[--ebook_name] EPUB电子书名字]", description="从Web源页面创建epub并且转换为azw3格式")
+    parser.add_argument("-c", "--convert_only", action="store_true", help="可选，不通过web源创建epub电子书，仅转换epub电子书为azw3格式")
+    parser.add_argument("-n", "--ebook_name", type=str, help="可选，电子书名称，应和--convert_only参数一起使用")
+    parser.add_argument("-l", "--ebook_lang", type=str, help="可选，电子书语言，应和--convert_only参数一起使用")
+    args = parser.parse_args()
+
     with open(os.path.join('configs', 'settings.json'), 'r', encoding='utf-8') as f:
         basic_info = json.load(f)
     print('配置参数：\n{}'.format(json.dumps(basic_info, sort_keys=True, indent=4, separators=(', ', ': '))))
 
     em = Ebookmaker(basic_info)
-    em.get_ip_pool()
-    if len(em.IP) == 0:
-        print('代理IP池大小为0！请重新获取！')
-        return
 
-    em.get_proxy_pool()
-    if len(em.proxyPool) == 0:
-        print('可用的IP代理池大小为0！请重新获取！')
-        return
+    if not args.convert_only:
+        em.get_ip_pool()
+        if len(em.IP) == 0:
+            print('代理IP池大小为0！请重新获取！')
+            return
 
-    em.get_book_info(em.basic_info['ebooks_labrary_path'])
-    if not em.book_chapter_urls:
-        print('获取书籍信息失败，请重试！')
-        return
+        em.get_proxy_pool()
+        if len(em.proxyPool) == 0:
+            print('可用的IP代理池大小为0！请重新获取！')
+            return
 
-    print('拷贝模板文件到书籍生成目录...')
-    book_path = os.path.join(em.basic_info['ebooks_labrary_path'], em.basic_info['book_name'])
-    copy_dir('template', book_path)
-    print('拷贝封面图片到书籍生成目录...')
-    book_cover_path = os.path.join(book_path, 'OEBPS', 'cover.jpg')
-    if os.path.exists(os.path.join(book_path, 'cover.pic')):
-        shutil.move(os.path.join(book_path, 'cover.pic'), book_cover_path)
-    chapter_template_file = os.path.join(book_path, 'OEBPS', 'chapter0.html')
-    if not os.path.exists(chapter_template_file):
-        print('章节模板文件不存在！请检查后重试。')
-        return
+        em.get_book_info(em.basic_info['ebooks_labrary_path'])
+        if not em.book_chapter_urls:
+            print('获取书籍信息失败，请重试！')
+            return
 
-    em.fetch_and_store_urls(book_path)
-    if len(em.missing_urls):
-        print('仍然存在获取失败的章节！请重试！')
-        return
+        print('拷贝模板文件到书籍生成目录...')
 
-    em.write_content_opf(book_path)
-    em.write_toc_ncx(book_path)
-    em.write_cover_html(book_path)
-    em.write_book_toc_html(book_path)
-    em.create_epub(book_path)
-    rc = em.convert_by_kindlegen(book_path)
-    if rc == 0:
+        book_path = os.path.join(em.basic_info['ebooks_labrary_path'], em.basic_info['book_name'])
+        copy_dir('template', book_path)
+        print('拷贝封面图片到书籍生成目录...')
+        book_cover_path = os.path.join(book_path, 'OEBPS', 'cover.jpg')
+        if os.path.exists(os.path.join(book_path, 'cover.pic')):
+            shutil.move(os.path.join(book_path, 'cover.pic'), book_cover_path)
+        chapter_template_file = os.path.join(book_path, 'OEBPS', 'chapter0.html')
+        if not os.path.exists(chapter_template_file):
+            print('章节模板文件不存在！请检查后重试。')
+            return
+
+        em.fetch_and_store_urls(book_path)
+        if len(em.missing_urls):
+            print('仍然存在获取失败的章节！请重试！')
+            return
+
+        em.write_content_opf(book_path)
+        em.write_toc_ncx(book_path)
+        em.write_cover_html(book_path)
+        em.write_book_toc_html(book_path)
+        em.create_epub(book_path)
+        rc = em.convert_by_kindlegen(book_path)
+        if rc == 0:
+            em.convert_by_ebook_convert(book_path)
+    else:
+        if not args.ebook_name or not args.ebook_lang:
+            print('epub书籍名字或者书籍语言未定义！请重试！')
+            return
+        em.basic_info['book_name'] = args.ebook_name
+        em.basic_info['book_language'] = args.ebook_lang
+        book_path = os.path.join(em.basic_info['ebooks_labrary_path'], em.basic_info['book_name'])
         em.convert_by_ebook_convert(book_path)
 
 if __name__ == '__main__':
