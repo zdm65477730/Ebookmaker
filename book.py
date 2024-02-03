@@ -136,7 +136,7 @@ class Ebookmaker(object):
         encode_content = response.content.decode(encoding, 'ignore')
         #print('##########')
         #print(url)
-        #print(encode_content)
+        #print(repr(encode_content))
         #print('##########')
         return encode_content
 
@@ -301,7 +301,11 @@ class Ebookmaker(object):
                 self.missing_urls.append(self.book_chapter_urls[index])
             self.semaphore.release()
             return
-        content_list = self.book_text_correction(index, re.findall(re.compile(self.basic_info['book_chapter_content_re']), chapter_html))
+        #print(repr(chapter_html))
+        patten = re.compile(self.basic_info['book_chapter_content_re'])
+        chapter_content_strings = re.findall(patten, chapter_html)
+        #print(chapter_content_strings)
+        content_list = self.book_text_correction(index, chapter_content_strings)
         for content in content_list:
             html_body_p = xml.createElement('p')
             html_body.appendChild(html_body_p)
