@@ -60,8 +60,28 @@ def find_content_node(soup, selectors: Sequence[str] = None):
 # “下一页”分页链接文本（仅接受精确匹配，避免误中“下一章”）
 _NEXT_PAGE_TEXT_RE = re.compile(r"^下一[页頁]$|^next page$|^第?\s*\d+\s*页$", re.I)
 
-# 章节链接形态：带 .html 后缀，或路径以独立数字段结尾（至少两位，排除 /2/ 这类栏目分页）
-_CHAPTER_HREF_RE = re.compile(r"\.html?($|[?#])|(?:^|/)\d{2,}(?:/|$|[?#])")
+# onclick 跳转式链接：location.href('/x') 与 location.href='/x' 两种引号形态
+_ONCLICK_URL_RE = re.compile(r"location\.\s*href\s*=\s*[('\"]+\s*([^'\")]+)")
+
+
+def anchor_href(tag) -> str:
+    """取锚点目标 URL：优先 href；href 为 javascript: 或缺失时回退 onclick 里的 location.href。"""
+    href = (tag.get("href") or "").strip()
+    if href and not href.lower().startswith("javascript:"):
+        return href
+    oc = tag.get("onclick") or ""
+    m = _ONCLICK_URL_RE.search(oc)
+    if m:
+        return m.group(1).strip()
+    # href="javascript:..." 内嵌的 location.href='/x'
+    if href.lower().startswith("javascript:"):
+        m = _ONCLICK_URL_RE.search(href)
+        if m:
+            return m.group(1).strip()
+    return ""
+
+# 章节链接形态：带 .html 后缀，或路径以独立数字段结尾（至少三位，排除 /2/ /13/ 这类栏目/目录分页）
+_CHAPTER_HREF_RE = re.compile(r"\.html?($|[?#])|(?:^|/)\d{3,}(?:/|$|[?#])")
 # 通用导航词标题（分页/目录/开关类），命中即非章节
 _NAV_TITLE_RE = re.compile(
     r"^(?:上一[页頁]|下一[页頁]|首[页頁]|尾[页頁]|末[页頁]|最新[页頁]|目[录錄]|书[页頁]|"
@@ -82,11 +102,14 @@ def find_next_page_url(html: str, cur_url: str) -> Optional[str]:
     soup = make_soup(html)
     cur = urlparse(cur_url)
     stem = re.sub(r"\.html?$", "", cur.path)
-    for a in soup.find_all("a", href=True):
+    for a in soup.find_all("a"):
         text = a.get_text(strip=True)
         if not _NEXT_PAGE_TEXT_RE.match(text):
             continue
-        absu = urljoin(cur_url, a["href"].strip())
+        href = anchor_href(a)
+        if not href:
+            continue
+        absu = urljoin(cur_url, href.strip())
         p = urlparse(absu)
         if p.netloc != cur.netloc:
             continue
@@ -113,33 +136,66 @@ def densest_toc_container(soup):
 
 
 def filter_same_host(entries: List[TocEntry], book_url: str) -> List[TocEntry]:
-    """仅保留与目录页同域的章节链接（镜像推荐/广告站链接不是本书章节）。
+    """保留与目录页同域且同书路径的章节链接，筛除同站“其他作品”侧栏推荐。
 
-    若全部条目都是外域（章节托管在独立域名），则不过滤，避免误删整本书。
-    """
+    路径约束采用软过滤：若本批同域条目中大多数均在书籍目录下，才应用该约束；
+    否则（章节独立存于其它路径的站点）只过域名，不会误删全书。"""
     host = urlparse(book_url).netloc.lower()
+    book_path = urlparse(book_url).path
+    book_dir = book_path if book_path.endswith("/") else book_path.rsplit("/", 1)[0] + "/"
 
     def same(href: str) -> bool:
         if href.startswith("//"):
             href = "https:" + href
         return urlparse(urljoin(book_url, href)).netloc.lower() in (host, "")
 
+    def same_dir(href: str) -> bool:
+        if href.startswith("//"):
+            href = "https:" + href
+        return urlparse(urljoin(book_url, href)).path.startswith(book_dir)
+
     same_entries = [e for e in entries if same(e.href)]
-    return same_entries if same_entries else entries
+    if not same_entries:
+        return entries   # 全部外域：不过滤
+    dir_entries = [e for e in same_entries if same_dir(e.href)]
+    # 大多数同域条目都在书目录下：进一步用路径约束去侧栏推荐
+    if len(dir_entries) >= len(same_entries) * 0.5:
+        return dir_entries
+    return same_entries
 
 
 # 目录分页合并的页数上限（每页通常百来章，够覆盖上万章的长篇）
 MAX_TOC_PAGES = 100
 
 
-def _page_targets(soup) -> List[str]:
-    """页面里所有可能是跳转目标的取值：<a>/<link>/<area> 的 href、<option>/<input> 的 value。
-
-    部分站点的目录页码是 <select onchange="location.href=this.value"> 形式，
-    只看 <a href> 会漏掉除“下一页”外的全部分页。"""
+def _labeled_targets(soup) -> List[tuple]:
+    """(跳转URL, 可见标签) 对；无标签的跳转（JS value）标签为空串。"""
     out = []
-    for tag in soup.find_all(["a", "link", "area"], href=True):
-        out.append(tag["href"].strip())
+    for tag in soup.find_all(["a", "link", "area"]):
+        href = tag.get("href")
+        if href:
+            out.append((href.strip(), tag.get_text(strip=True)))
+        m = _ONCLICK_URL_RE.search(tag.get("onclick") or "")
+        if m:
+            out.append((m.group(1).strip(), tag.get_text(strip=True)))
+    for tag in soup.find_all(["option", "input"], value=True):
+        label = tag.get_text(strip=True) if tag.name == "option" else ""
+        out.append((tag["value"].strip(), label))
+    return out
+
+
+def _page_targets(soup) -> List[str]:
+    """页面里所有可能是跳转目标的取值：<a>/<link>/<area> 的 href、onclick 跳转 URL、
+    <option>/<input> 的 value。部分站点目录页码是 <select> 或 <a onclick=location.href> 形式，
+    只看 <a href> 会漏掉全部分页。"""
+    out = []
+    for tag in soup.find_all(["a", "link", "area"]):
+        href = tag.get("href")
+        if href:
+            out.append(href.strip())
+        m = _ONCLICK_URL_RE.search(tag.get("onclick") or "")
+        if m:
+            out.append(m.group(1).strip())
     for tag in soup.find_all(["option", "input"], value=True):
         out.append(tag["value"].strip())
     return out
@@ -153,25 +209,44 @@ def _page_key(url: str) -> str:
 
 
 def find_series_pages(html: str, cur_url: str, max_pages: int = MAX_TOC_PAGES) -> List[str]:
-    """探测同系列分页（如目录页 /490/490651_5/ 对应的 _1.._N），返回绝对 URL 列表。
+    """探测同系列目录分页，返回绝对 URL 列表。支持两种形态：
 
-    仅认同名兄弟页：路径为 `基础名_数字`，排除章节文档等同前缀的不同路径。
+    1) 后缀式兄弟页：/490651_5/ 对应 _1.._N（基础名_数字 fullmatch 守护）；
+    2) 数字目录式：/xiaoshuo/842/842172/ 的 /1/ /2/ …（base 下一段纯数字+尾斜杠，
+       必须带尾斜杠才不会误把章节文档 /842172/183863035.html 当分页）。
     """
     soup = make_soup(html)
     cur = urlparse(cur_url)
     stem = re.sub(r"/\.?(html)?/?$", "", cur.path).rstrip("/")
     base = re.sub(r"_\d+$", "", stem)
+    # 当前页自身就是数字目录页（/base/N/）：兄弟页必属同系列，直接剥页号求 base
+    # （lxml 会去掉属性 URL 的尾斜杠，两种形态都认）
+    self_dir = re.search(r"/\d{1,4}/?$", stem) and (cur.path.endswith("/") or stem != cur.path.rstrip("/"))
+    if self_dir:
+        base = re.sub(r"/\d{1,4}$", "", base)
     pattern = re.compile(re.escape(base) + r"_\d+$")
+    dir_pattern = re.compile(re.escape(base) + r"/(\d{1,4})/?$")
+    # 首页/正文页上的 /base/N/ 链接只有在“标签是纯数字或翻页词”时才是目录分页，
+    # 否则可能是形似 /9/ 的章节文档；“全部章节/目录”类入口无条件作为种子。
+    NUM_LABEL_RE = re.compile(r"^\d{1,4}$")
     found = set()
-    for href in _page_targets(soup):
+    for href, label in _labeled_targets(soup):
         absu = urljoin(cur_url, href)
         p = urlparse(absu)
         if p.netloc.lower() != cur.netloc.lower():
             continue
         ppath = re.sub(r"/\.?(html)?/?$", "", p.path).rstrip("/")
-        if ppath == stem or not pattern.fullmatch(ppath):
+        if pattern.fullmatch(ppath) and ppath != stem:
+            found.add("{}://{}{}".format(p.scheme or cur.scheme, p.netloc, p.path))
             continue
-        found.add("{}://{}{}".format(p.scheme or cur.scheme, p.netloc, p.path))
+        # 数字目录式：非自指；lxml 剥斜杠后统一补回尾斜杠（目录页形态）
+        if not dir_pattern.fullmatch(p.path):
+            continue
+        if ppath == stem:
+            continue
+        if self_dir or NUM_LABEL_RE.match(label or "") or re.search(r"全部章节|章节目录", label or ""):
+            found.add("{}://{}{}".format(p.scheme or cur.scheme, p.netloc,
+                                         p.path if p.path.endswith("/") else p.path + "/"))
     return sorted(found)[:max_pages]
 
 
@@ -212,6 +287,9 @@ def collect_series_pages(html: str, cur_url: str, get_html, max_pages: int = MAX
 
 def _page_number(url: str) -> int:
     m = re.search(r"_(\d+)(?:[/.]|$)", urlparse(url).path)
+    if m:
+        return int(m.group(1))
+    m = re.search(r"/(\d+)/$", urlparse(url).path)   # 数字目录式 /base/12/
     return int(m.group(1)) if m else 0
 
 
@@ -290,27 +368,75 @@ def clean_author(raw: str) -> str:
     return AUTHOR_PREFIX_RE.sub("", author)
 
 
+_FW_DIGITS = str.maketrans("０１２３４５６７８９", "0123456789")
+_HREF_NUM_RE = re.compile(r"/(\d{1,9})(?:_\d+)?(?:\.html?|\.htm)?/?:\d*$")
+
+
+def _title_number(title: str) -> Optional[int]:
+    m = _TITLE_NUM_RE.search((title or "").translate(_FW_DIGITS))
+    return int(m.group(1)) if m else None
+
+
+def _href_number(href: str) -> Optional[int]:
+    """URL 尾号（去分页后缀）：/490/336.html -> 336；/842/842172/12/ -> 12。"""
+    m = _HREF_NUM_RE.search((href or "").rstrip("/"))
+    if m:
+        return int(m.group(1))
+    m = re.search(r"(\d{1,9})(?:_\d+)?\.html?$", href or "", re.I)
+    return int(m.group(1)) if m else None
+
+
 def normalize_toc(entries: List[TocEntry]) -> List[TocEntry]:
-    """排序 + 去重（迁移旧 get_book_info 逻辑，且更宽容）：
-    - 按标题中"第N章"序号稳定排序（序号缺失回退 URL 尾号）
-    - 同序号只保留第一个出现（正序中最先）
+    """排序 + 去重，标题序号与 URL 尾号双证据仲裁：
+
+    - 首选“标题序号==URL尾号”的条目（两证据互证，最可信）占位；
+    - 其余按标题序号（缺失回退 URL 尾号）顺序占位，同序号先到先得（站点
+      “最新章节”模块跨页重复即此路径消除）；
+    - 撞车条目若其 URL 尾号尚无人占用，则按尾号补位——源站个别章节
+      标题笔误（如 336.html 标题误写“第366章”）时不再掉真章。
+    - 若绝大多数条目有序号（≥ 80%），则丢弃无序号条目（通常是其他书侧栏推荐）。
     """
-    keyed, unkeyed = [], []
+    assigned: dict = {}          # num -> (order, entry)
+    deferred: list = []          # (num, order, entry, urlnum)
+    unkeyed: list = []
     for i, e in enumerate(entries):
-        num = e.number
-        if num is None:
-            unkeyed.append((i, e))
+        tnum = _title_number(e.title)
+        unum = _href_number(e.href)
+        if tnum is not None and tnum == unum:
+            if tnum not in assigned:
+                assigned[tnum] = (i, e)
+        elif tnum is not None:
+            deferred.append((tnum, i, e, unum))
+        elif unum is not None:
+            deferred.append((unum, i, e, unum))
         else:
-            keyed.append((num, i, e))
-    keyed.sort(key=lambda t: (t[0], t[1]))
-    result, seen = [], set()
-    for num, _, e in keyed:
-        if num in seen:
+            unkeyed.append((i, e))
+    rescued = 0
+    for num, i, e, unum in sorted(deferred, key=lambda t: (t[0], t[1])):
+        if num not in assigned:
+            assigned[num] = (i, e)
             continue
-        seen.add(num)
-        result.append(e)
+        ci, ce = assigned[num]
+        if ce.href == e.href:
+            continue               # href 完全相同 => 同章重复展示（最新章节模块），丢
+        if unum is not None and unum not in assigned:
+            assigned[unum] = (i, e)   # 标题序号被占：按 URL 尾号补位（源站标题笔误）
+            rescued += 1
+    if rescued:
+        log.info("目录中 %d 个条目标题序号与 URL 尾号不符，已按尾号补位（源站笔误救援）",
+                 rescued)
+    result = [e for _, e in (v for _, v in sorted(assigned.items()))]
+    # 当绝大多数条目都有序号时，无序号条目是噪声（其他书链接等），丢弃
+    total = len(assigned) + len(unkeyed)
+    if unkeyed and total and len(assigned) / total >= 0.8:
+        log.info("目录中 %d 个无序号条目被丢弃（其他链接，占比 %.0f%%）",
+                 len(unkeyed), 100.0 * len(unkeyed) / total)
+        return result
     for _, e in unkeyed:
-        # 无序号条目（前言/尾声等）按原始相对顺序保留
+        # 无序号条目（前言/尾声等）按原始相对顺序保留；href 与有序号条目
+        # 重复的（如“开始阅读”按钮指向第一章）丢弃
+        if e.href in {x.href for x in result}:
+            continue
         result.append(e)
     if unkeyed:
         log.info("目录中 %d 个条目无法解析序号，已按原顺序保留", len(unkeyed))
@@ -319,9 +445,16 @@ def normalize_toc(entries: List[TocEntry]) -> List[TocEntry]:
 
 class SiteAdapter(ABC):
     name: str = "base"
-    hosts: List[str] = []          # 后缀匹配，空表示仅手动指定/兜底
+    hosts: List[str] = []          # 后缀匹配；空表示仅手动指定或启发式默认适配器
     toc_selectors: Sequence[str] = DEFAULT_TOC_SELECTORS
     content_selectors: Sequence[str] = DEFAULT_CONTENT_SELECTORS
+
+    def has_content_container(self, html: str) -> bool:
+        """页面是否含本站正文容器（章节分页归属判据之一）。"""
+        try:
+            return find_content_node(make_soup(html), self.content_selectors) is not None
+        except Exception:
+            return False
 
     def matches(self, url: str) -> bool:
         host = urlparse(url).netloc.lower()
@@ -347,11 +480,11 @@ class SiteAdapter(ABC):
                 break
         entries = []
         for a in links:
-            href = (a.get("href") or "").strip()
+            href = anchor_href(a)
             title = a.get_text(strip=True)
             if not href or not title:
                 continue
-            if href.startswith(("javascript:", "#")):
+            if href.startswith("#"):
                 continue
             # 过滤分页导航/返回目录/镜像栏目等非章节链接
             if not looks_like_chapter(href, title):
@@ -367,7 +500,7 @@ class SiteAdapter(ABC):
         _, links = densest_toc_container(soup)
         entries = []
         for a in links:
-            href = a.get("href", "").strip()
+            href = anchor_href(a)
             title = a.get_text(strip=True)
             if href and title and looks_like_chapter(href, title):
                 entries.append(TocEntry(href=href, title=title))

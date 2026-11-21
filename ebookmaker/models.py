@@ -68,6 +68,7 @@ class ChapterData:
     paragraphs: List[str] = field(default_factory=list)
     status: str = "ok"
     problems: List[str] = field(default_factory=list)
+    confidence: float = 1.0    # 正文置信度 0~1（旧缓存无此字段时按 1.0 兼容）
 
     def text_length(self) -> int:
         return sum(len(p) for p in self.paragraphs)
@@ -84,4 +85,5 @@ class ChapterData:
             paragraphs=list(data.get("paragraphs", [])),
             status=data.get("status", "ok"),
             problems=list(data.get("problems", [])),
+            confidence=float(data.get("confidence", 1.0)),
         )

@@ -94,3 +94,42 @@ content:
     # host 未命中仍回 generic
     assert isinstance(get_adapter("https://other.cn/", extra_rules_dirs=[rules_dir]),
                       GenericSite)
+
+
+def _toc(entries):
+    from ebookmaker.models import TocEntry
+    from ebookmaker.sites.base import normalize_toc
+    return normalize_toc([TocEntry(href=h, title=t) for h, t in entries])
+
+
+def test_normalize_toc_duplicate_and_typo_rescue():
+    # 真实场景：bqg2 “最新章节”模块跨页重复 5 次（同 href）；
+    # 336.html 标题笔误写成“第366章”，挤掉了真的 366.html
+    base = "/html/490/490651/"
+    entries = []
+    for n in range(1, 367):           # 1..366 正常；336 的标题被写错成 366
+        title = "第366章 明知是陷阱" if n == 336 else "第%d章 正文" % n
+        entries.append((base + "%d.html" % n, title))
+    entries.append((base + "366.html", "第366章 情况完全不同"))
+    # 真正的 366 在列表里排在笔误条目之后
+    entries = entries[:335] + [entries[335]] + entries[336:]
+    entries = sorted(entries, key=lambda e: int(e[0].rsplit("/", 1)[1].split(".")[0]))
+    entries[335] = (base + "336.html", "第366章 明知是陷阱")   # 笔误
+    entries[365] = (base + "366.html", "第366章 情况完全不同")
+    # 重复展示：最后 9 章整段再来一遍（同 href）
+    entries += [e for e in entries if int(e[0].rsplit("/", 1)[1].split(".")[0]) > 357]
+    toc = _toc(entries)
+    hrefs = [e.href for e in toc]
+    assert len(toc) == 366                      # 不多不少：336 与 366 都在
+    assert base + "336.html" in hrefs and base + "366.html" in hrefs
+    n366 = [e for e in toc if e.href.endswith("366.html")]
+    assert n366[0].title == "第366章 情况完全不同"  # 真 366 不被笔误条目顶掉
+    assert len(hrefs) == len(set(hrefs))        # 重复展示已消除
+
+
+def test_normalize_toc_random_url_ids_unaffected():
+    # woyaodu 形态：URL 尾号是随机长号，章节顺序全凭标题序号，不受救援影响
+    entries = [("/xiaoshuo/842/842172/%d.html" % (182801290 + i), "第%d章 x" % i)
+               for i in range(1, 6)]
+    toc = _toc(entries)
+    assert [e.title for e in toc] == ["第%d章 x" % i for i in range(1, 6)]

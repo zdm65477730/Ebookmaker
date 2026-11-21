@@ -12,6 +12,7 @@ import hashlib
 import os
 import time
 import zipfile
+from string import Template
 from xml.sax.saxutils import escape as xml_escape
 from typing import List, Optional
 
@@ -26,7 +27,7 @@ RES_DIR = os.path.dirname(os.path.abspath(__file__))
 
 XHTML_TMPL = """<?xml version='1.0' encoding='utf-8'?>
 <!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="{lang}" lang="{lang}">
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="{lang}" lang="{lang}">
 <head>
 <meta http-equiv="Content-Type" content="application/xhtml+xml; charset=utf-8" />
 <title>{title}</title>
@@ -55,26 +56,44 @@ def book_uuid(title: str) -> str:
 
 
 def _chapter_xhtml(ch: ChapterData, lang: str) -> str:
-    parts = ['<h1 class="chapter-title">{}</h1>'.format(xml_escape(ch.title))]
-    for para in ch.paragraphs:
-        parts.append('<p class="indent">{}</p>'.format(xml_escape(para)))
-    body = "\n".join(parts)
+    """使用 chapter_template.xhtml 模板渲染章节（string.Template，$title/$content）。"""
+    paras = "\n".join('<p class="indent">{}</p>'.format(xml_escape(p)) for p in ch.paragraphs)
+    tmpl_path = os.path.join(RES_DIR, "chapter_template.xhtml")
+    if os.path.isfile(tmpl_path):
+        with open(tmpl_path, "r", encoding="utf-8") as fp:
+            tmpl = Template(fp.read())
+    else:
+        tmpl = Template('<h1 class="chapter-title">$title</h1>\n$content')
+    body = tmpl.safe_substitute(title=xml_escape(ch.title), content=paras)
     return XHTML_TMPL.format(lang=lang, title=xml_escape(ch.title), body=body)
 
 
-def _cover_xhtml(lang: str, title: str, image_file: str) -> str:
-    body = '<div class="cover"><img src="{}" alt="{}" /></div>'.format(image_file, xml_escape(title))
-    return XHTML_TMPL.format(lang=lang, title=xml_escape(title), body=body)
-
-
 def _title_xhtml(meta: BookMeta) -> str:
-    parts = ['<div class="titlepage">',
-             '<p class="booktitle">{}</p>'.format(xml_escape(meta.title)),
-             '<p class="bookauthor">{}</p>'.format(xml_escape(meta.author))]
+    """使用 title_template.xhtml 模板渲染扉页（string.Template 语法，$变量）。"""
+    tmpl_path = os.path.join(RES_DIR, "title_template.xhtml")
+    if os.path.isfile(tmpl_path):
+        with open(tmpl_path, "r", encoding="utf-8") as fp:
+            tmpl = Template(fp.read())
+    else:
+        tmpl = Template('<div class="titlepage">\n'
+                        '<p class="booktitle">$title</p>\n'
+                        '<p class="bookauthor">$author</p>\n'
+                        '$description\n'
+                        '</div>')
+    desc_block = ''
     if meta.description:
-        parts.append('<p class="bookmeta">{}</p>'.format(xml_escape(meta.description)))
-    parts.append("</div>")
-    return XHTML_TMPL.format(lang=meta.language, title=xml_escape(meta.title), body="\n".join(parts))
+        desc_block = '<div class="bookdesc"><p class="bookmeta">{}</p></div>'.format(
+            xml_escape(meta.description))
+    body = tmpl.safe_substitute(
+        title=xml_escape(meta.title),
+        author=xml_escape(meta.author),
+        description=desc_block,
+        publisher=xml_escape(meta.publisher),
+        category=xml_escape(meta.category),
+        update_time=xml_escape(meta.update_time),
+        lang=meta.language,
+    )
+    return XHTML_TMPL.format(lang=meta.language, title=xml_escape(meta.title), body=body)
 
 
 def _toc_xhtml(meta: BookMeta, chapters: List[ChapterData]) -> str:
@@ -129,20 +148,22 @@ def _opf(meta: BookMeta, chapters: List[ChapterData], cover_file: str, cover_mim
         '<item id="style" href="style.css" media-type="text/css" />',
         '<item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml" />',
         '<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav" />',
-        '<item id="cover-image" href="{}" media-type="{}" />'.format(cover_file, cover_mime),
-        '<item id="cover" href="cover.xhtml" media-type="application/xhtml+xml" />',
+        '<item id="cover-image" href="{}" media-type="{}" properties="cover-image" />'.format(cover_file, cover_mime),
         '<item id="titlepage" href="title.xhtml" media-type="application/xhtml+xml" />',
         '<item id="book-toc" href="book-toc.xhtml" media-type="application/xhtml+xml" />',
     ]
-    meta_cover = '\n    <meta name="cover" content="cover-image" />'
+    # 封面只声明 cover-image（EPUB3 标准）：Kindle/Calibre 会据此自动生成唯一全屏封面页，
+    # 避免自带 cover.xhtml 与 Calibre 生成页叠加成“两张封面”。
+    meta_cover = ('\n    <meta name="cover" content="cover-image" />'
+                  '\n    <meta property="dcterms:modified">{}</meta>'
+                  .format(time.strftime("%Y-%m-%dT%H:%M:%SZ")))
 
     for ch in chapters:
         manifest_items.append(
             '<item id="chapter{idx}" href="chapter{idx:05d}.xhtml" media-type="application/xhtml+xml" />'
             .format(idx=ch.index))
 
-    spine_items = ['<itemref idref="cover" linear="no" />',
-                   '<itemref idref="titlepage" linear="yes" />',
+    spine_items = ['<itemref idref="titlepage" linear="yes" />',
                    '<itemref idref="book-toc" linear="yes" />']
     for ch in chapters:
         spine_items.append('<itemref idref="chapter{idx}" linear="yes" />'.format(idx=ch.index))
@@ -203,15 +224,30 @@ def build_epub(store: BookStore, out_path: str, cleaner: Optional[Cleaner] = Non
         raise RuntimeError("工作区没有已缓存章节，请先执行 crawl")
 
     junk = set(store.load_junk_lines())
-    if junk and cleaner is not None:
-        log.info("应用跨章节广告行过滤（%d 种）...", len(junk))
+    if cleaner is not None:
+        if junk:
+            log.info("应用跨章节广告行过滤（%d 种）...", len(junk))
+        # 无论是否有高频广告行，都要跑结构清洗：去重复章名 / 删导航列表 / 删推荐块
         for ch in chapters:
             ch.paragraphs = cleaner.clean_paragraphs(ch.paragraphs, chapter_index=ch.index,
                                                      junk_lines=junk, title=ch.title)
+            # 成品形态重算置信度并回写缓存，供 verify 审核报告使用
+            ch.confidence = round(cleaner.chapter_confidence(ch.paragraphs, title=ch.title)[0], 3)
+            try:
+                store.save_chapter(ch)
+            except OSError:
+                pass
     elif junk:
-        norm_junk = junk
         for ch in chapters:
-            ch.paragraphs = [p for p in ch.paragraphs if re_normalize(p) not in norm_junk]
+            ch.paragraphs = [p for p in ch.paragraphs if re_normalize(p) not in junk]
+
+    # 安全网：清洗后为空的章节（多为源站缺章/锁定），插占位并告警，避免无声空白页
+    empty = [ch for ch in chapters if not ch.paragraphs]
+    if empty:
+        log.warning("%d 章清洗后无正文（源站可能缺章）：%s", len(empty),
+                    ", ".join(str(c.index) for c in empty[:12]) + (" …" if len(empty) > 12 else ""))
+        for ch in empty:
+            ch.paragraphs = ["（本章节在源站暂无正文内容。）"]
 
     # 封面保障：站点封面缺失时退回内置默认封面
     cover_src = store.cover_path()
@@ -220,10 +256,13 @@ def build_epub(store: BookStore, out_path: str, cleaner: Optional[Cleaner] = Non
         if not os.path.isfile(cover_src):
             raise RuntimeError("内置默认封面缺失，无法生成封面页: " + cover_src)
         log.info("未获取到站点封面，使用内置默认封面")
-    cover_file, cover_mime = "cover.jpg", "image/jpeg"
-    ext = os.path.splitext(cover_src)[1].lstrip(".").lower()
-    if ext == "png":
-        cover_file, cover_mime = "cover.png", "image/png"
+    # 封面归一化：小封面等比放大到 Kindle 可用分辨率，统一 RGB JPEG
+    from ..coverutil import normalize_cover
+    norm = normalize_cover(cover_src)
+    if norm is None:
+        raise RuntimeError("封面读取失败: " + cover_src)
+    cover_bytes, cover_ext, cover_mime = norm
+    cover_file = "cover." + cover_ext
 
     with zipfile.ZipFile(out_path, "w") as zf:
         # 规范要求：mimetype 必须为首个条目且不压缩
@@ -234,11 +273,9 @@ def build_epub(store: BookStore, out_path: str, cleaner: Optional[Cleaner] = Non
         _write(zf, "OEBPS/content.opf", _opf(meta, chapters, cover_file, cover_mime))
         _write(zf, "OEBPS/toc.ncx", _ncx(meta, chapters))
         _write(zf, "OEBPS/nav.xhtml", _nav_xhtml(meta, chapters))
-        _write(zf, "OEBPS/cover.xhtml", _cover_xhtml(meta.language, meta.title, cover_file))
         _write(zf, "OEBPS/title.xhtml", _title_xhtml(meta))
         _write(zf, "OEBPS/book-toc.xhtml", _toc_xhtml(meta, chapters))
-        with open(cover_src, "rb") as fp:
-            _write(zf, "OEBPS/" + cover_file, fp.read(), compress=False)
+        _write(zf, "OEBPS/" + cover_file, cover_bytes, compress=False)
         for ch in chapters:
             _write(zf, "OEBPS/chapter{:05d}.xhtml".format(ch.index), _chapter_xhtml(ch, meta.language))
 

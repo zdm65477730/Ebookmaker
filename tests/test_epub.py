@@ -42,12 +42,14 @@ def test_epub_structure(tmp_path):
         assert zf.read("mimetype") == b"application/epub+zip"
 
         expected = ["META-INF/container.xml", "OEBPS/content.opf", "OEBPS/toc.ncx",
-                    "OEBPS/nav.xhtml", "OEBPS/style.css", "OEBPS/cover.xhtml",
+                    "OEBPS/nav.xhtml", "OEBPS/style.css",
                     "OEBPS/cover.jpg", "OEBPS/title.xhtml",
                     "OEBPS/book-toc.xhtml", "OEBPS/chapter00001.xhtml",
                     "OEBPS/chapter00002.xhtml"]
         for name in expected:
             assert name in names, "缺少 " + name
+        # 封面不再自带 cover.xhtml 页（交由 Kindle/Calibre 从 cover-image 生成唯一全屏封面）
+        assert "OEBPS/cover.xhtml" not in names
 
         # XML 良构
         for name in ["OEBPS/content.opf", "OEBPS/toc.ncx", "OEBPS/nav.xhtml",
@@ -63,9 +65,11 @@ def test_epub_structure(tmp_path):
         opf = zf.read("OEBPS/content.opf").decode("utf-8")
         assert book_uuid("测试书") in opf
         assert "张三 &amp; 李四" in opf
-        # 封面必含：即使工作区没有站点封面，也用内置默认封面
-        assert '<item id="cover"' in opf and '<meta name="cover"' in opf
-        assert '<itemref idref="cover"' in opf
+        # 封面必含：即使工作区没有站点封面，也用内置默认封面；
+        # 封面以 EPUB3 cover-image 属性声明（非独立封面页，避免与 Calibre 生成页重复）
+        assert 'id="cover-image"' in opf and 'properties="cover-image"' in opf
+        assert '<meta name="cover"' in opf
+        assert '<itemref idref="cover"' not in opf  # spine 不再包含自带封面页
         assert zf.read("OEBPS/cover.jpg")  # 默认封面图片已打入
         # 目录/章节齐备
         toc = zf.read("OEBPS/book-toc.xhtml").decode("utf-8")

@@ -17,7 +17,7 @@
 import math
 import os
 import re
-from collections import defaultdict
+from collections import Counter, defaultdict
 from typing import Dict, List, Optional, Tuple
 from urllib.parse import urljoin, urlparse
 
@@ -128,11 +128,11 @@ def css_selector(node, soup) -> Optional[str]:
 
 # ---------- 候选容器打分 ----------
 def content_candidates(soup, cleaner: Cleaner, min_cjk: int) -> Dict[str, tuple]:
-    """selector -> (加权得分, 原始清洗后中文字数)。
+    """selector -> (加权得分, 清洗后中文字数, 清洗后正文文本)。
 
-    统计前剔除 a/button 文本（导航/分页链接不属于正文），
-    并对命中正文命名线索的选择器给予 20% 加权，优先选中最内层正文容器。
-    """
+    统计前剔除 a/button 文本（导航/分页链接不属于正文），对命中正文命名线索的
+    选择器给予 20% 加权。跨样本的“重复度”甄别在 learn_site 里做（外壳/侧栏
+    在章与章之间几乎不变，真正文几乎不重复）。"""
     stats: Dict[str, tuple] = {}
     for node in soup.find_all(["div", "section", "article"]):
         raw_text = node.get_text(strip=True)
@@ -147,13 +147,14 @@ def content_candidates(soup, cleaner: Cleaner, min_cjk: int) -> Dict[str, tuple]
             t.decompose()
         lines = container_to_lines(frag.body or frag)
         cleaned = cleaner.clean_paragraphs(lines, chapter_index=1)
-        cjk = len(TEXT_MASS_RE.findall("".join(cleaned)))
+        blob = "".join(cleaned)
+        cjk = len(TEXT_MASS_RE.findall(blob))
         if cjk < min_cjk:
             continue
         score = int(cjk * 1.2) if CONTENT_HINT_RE.search(sel) else cjk
         prev = stats.get(sel)
         if prev is None or score > prev[0]:
-            stats[sel] = (score, cjk)
+            stats[sel] = (score, cjk, blob)
     return stats
 
 
@@ -253,16 +254,45 @@ def learn_site(http, book_url: str, toc: List[TocEntry], cleaner: Cleaner,
 
     agg: Dict[str, List[int]] = defaultdict(list)
     raw_agg: Dict[str, List[int]] = defaultdict(list)
+    blob_agg: Dict[str, List[str]] = defaultdict(list)
     for d in per_doc:
-        for sel, (score, raw) in d.items():
+        for sel, (score, raw, blob) in d.items():
             agg[sel].append(score)
             raw_agg[sel].append(raw)
+            blob_agg[sel].append(blob)
+
+    def _repetition_factor(sel: str) -> float:
+        """跨样本重复度：两两 3-gram **多重集**质量 Jaccard 的中位数。
+
+        用多重集而非集合：侧栏复读文案在集合下 gram 种类极少会低估重复度，
+        质量占比才是“容器文本有多少来自固定挂件”的真实度量。
+        页面壳/侧栏跨章几乎原样重现（高）；真正文章与章仅共享常用词（低）。
+        ≥ 0.20 按 (1-rep)^2 降权，下限 0.01。"""
+        blobs = blob_agg.get(sel) or []
+        if len(blobs) < 3:
+            return 1.0
+        def grams(b: str):
+            b = re.sub(r"\s+", "", b)
+            return Counter(b[i:i + 3] for i in range(max(1, len(b) - 2)))
+        g = [grams(b) for b in blobs[:6]]
+        sims = []
+        for i in range(len(g)):
+            for j in range(i + 1, len(g)):
+                inter = sum((g[i] & g[j]).values())
+                union = sum((g[i] | g[j]).values()) or 1
+                sims.append(inter / union)
+        sims.sort()
+        rep = sims[len(sims) // 2]
+        if rep >= 0.20:
+            return max(0.01, (1.0 - rep) ** 2)
+        return 1.0
+
     need = max(3, math.ceil(0.8 * len(per_doc)))
     best_sel, best_med, best_raw = None, 0, []
     for sel, vals in agg.items():
         if len(vals) < need:
             continue
-        med = sorted(vals)[len(vals) // 2]
+        med = sorted(vals)[len(vals) // 2] * _repetition_factor(sel)   # 中位分×重复度因子，非首样本分
         if med > best_med:
             best_sel, best_med, best_raw = sel, med, raw_agg[sel]
     if not best_sel:

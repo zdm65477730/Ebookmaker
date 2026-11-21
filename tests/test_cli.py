@@ -25,7 +25,7 @@ def test_normalize_keeps_explicit_forms():
 def test_main_one_step_dispatches_run(tmp_path, monkeypatch):
     calls = {}
 
-    def fake_crawl(cfg, url, site, rules_dirs, force):
+    def fake_crawl(cfg, url, site, rules_dirs, force, sources=None):
         calls["crawl"] = url
         return BookStore(str(tmp_path / "书"))
 
@@ -45,7 +45,7 @@ def test_main_one_step_dispatches_run(tmp_path, monkeypatch):
 def test_main_single_step_commands(tmp_path, monkeypatch):
     seen = {}
     monkeypatch.setattr(cli, "cmd_crawl",
-                        lambda cfg, url, site, rd, force: (seen.__setitem__("cmd", "crawl"),
+                        lambda cfg, url, site, rd, force, sources=None: (seen.__setitem__("cmd", "crawl"),
                                                            BookStore(str(tmp_path / "c")))[1])
     monkeypatch.setattr(cli, "cmd_build",
                         lambda cfg, store, formats: (seen.__setitem__("cmd", "build"), 0)[1])

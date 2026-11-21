@@ -68,7 +68,12 @@ class ProxyConfig:
 class CleanerConfig:
     min_chapter_len: int = 200       # 少于该字数判定可疑，进入补爬队列
     junk_line_ratio: float = 0.3     # 行在超过该比例章节中出现 => 判定为插入广告
-    junk_line_max_len: int = 60      # 超长行不当广告处理
+    junk_line_max_len: int = 300     # 超长行不当广告处理（此值限制跨章广告统计的行长上限，30 字以上且出现在头尾的行才是对象）
+    junk_head_lines: int = 3         # 跨章节统计取章首行数
+    junk_tail_lines: int = 25        # 跨章节统计取章尾行数（推荐/书友切块可能较深）
+    junk_title_max_len: int = 24     # 短于此长且无句末标点的行视为“书名类”，高频重现即判广告
+    min_confidence: float = 0.5      # 章节正文置信度闸门：低于此值判低置信，降速补抓重抽
+    dual_extractor_margin: float = 1.15  # trafilatura 标尺超出站点路径该倍数才改用标尺行
     fix_punctuation: bool = True     # 半角标点邻接中文时转全角
     drop_site_name_lines: bool = True
 

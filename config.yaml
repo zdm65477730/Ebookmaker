@@ -39,7 +39,7 @@ proxy:
 cleaner:
   min_chapter_len: 200    # 少于该字数判定可疑并补爬
   junk_line_ratio: 0.3    # 高频广告行判定阈值（章首/章尾出现比例）
-  junk_line_max_len: 60
+  junk_line_max_len: 300   # 跨章高频广告行统计的行长上限（字）：覆盖推广段长度超过 60 字的站点
   fix_punctuation: true
   drop_site_name_lines: true
 

@@ -5,22 +5,56 @@ body {
     font-family: serif;
 }
 
-/* 章节标题：独占一页顶部 */
-h1.chapter-title {
-    font-size: 1.6em;
-    font-weight: bold;
-    text-align: center;
-    margin: 1.2em 0 1.4em 0;
+/* 章节：语义区块 + 章前分页 */
+section.chapter {
+    display: block;
     page-break-before: always;
+}
+
+header.chapter-head {
+    display: block;
+    text-align: center;
+    margin: 0 0 1.8em 0;
     page-break-after: avoid;
+}
+
+div.chap-ornament {
+    font-size: 1em;
+    color: #8b7355;
+    margin: 0.6em 0 0.4em 0;
+}
+
+/* 章节标题：居中、与正文拉开层次 */
+h1.chapter-title {
+    font-size: 1.5em;
+    font-weight: bold;
+    color: #1a1a1a;
+    text-align: center;
+    line-height: 1.4;
+    margin: 0.2em 0 0;
+    page-break-after: avoid;
+}
+
+/* 章标题下装饰分隔线 */
+div.chap-rule {
+    width: 28%;
+    height: 0;
+    margin: 1em auto 0 auto;
+    border: none;
+    border-top: 1px solid #c4a882;
+}
+
+div.chapter-body {
+    display: block;
+    margin-top: 1.6em;
 }
 
 /* 正文段落：两字符首行缩进，段间距，合理行距 */
 p.indent {
     font-size: 1em;
-    line-height: 1.6;
+    line-height: 1.8;
     text-indent: 2em;
-    margin: 0 0 0.4em 0;
+    margin: 0 0 0.6em 0;
     text-align: justify;
     orphans: 2;
     widows: 2;
@@ -33,41 +67,71 @@ p.plain {
     margin: 0 0 0.4em 0;
 }
 
-/* 封面页 */
-div.cover {
-    text-align: center;
+/* 扉页（书名/作者/简介）—— 经典书籍排版 */
+div.titlepage {
     margin: 0;
     padding: 0;
     page-break-after: always;
-}
-
-div.cover img {
-    max-width: 100%;
-    max-height: 100%;
-}
-
-/* 扉页（书名/作者） */
-div.titlepage {
-    margin-top: 35%;
     text-align: center;
-    page-break-after: always;
 }
 
-p.booktitle {
-    font-size: 2em;
+/* 顶部装饰符号 */
+div.tp-ornament {
+    margin-top: 18%;
+    margin-bottom: 1.2em;
+    font-size: 1.4em;
+    color: #8b7355;
+    letter-spacing: 0.5em;
+}
+
+/* 标题组 */
+div.tp-main {
+    margin: 0 1.5em 0 1.5em;
+}
+
+h1.tp-title {
+    font-size: 1.9em;
     font-weight: bold;
-    margin-bottom: 0.6em;
+    color: #1a1a1a;
+    line-height: 1.35;
+    margin: 0 0 0.5em 0;
+    text-align: center;
+    page-break-before: avoid;
 }
 
-p.bookauthor {
-    font-size: 1.1em;
+div.tp-author {
+    font-size: 1.15em;
+    color: #4a4a4a;
+    letter-spacing: 0.35em;
+    margin-bottom: 0;
+}
+
+/* 装饰分隔线 */
+div.tp-rule {
+    width: 35%;
+    margin: 2em auto 1.8em auto;
+    border: none;
+    border-top: 1px solid #c4a882;
+    height: 0;
+}
+
+/* 简介区块 */
+div.bookdesc {
+    margin: 0 2.5em 0 2.5em;
+    padding: 1.2em 1.5em;
+    text-align: justify;
+    border-left: 2px solid #d4c5a9;
+    background-color: rgba(244, 240, 230, 0.3);
 }
 
 p.bookmeta {
-    font-size: 0.85em;
-    color: #666;
-    margin-top: 2em;
+    font-size: 0.88em;
+    color: #555;
+    line-height: 1.8;
+    text-indent: 0;
+    margin: 0;
 }
+
 
 /* 目录页 */
 div.tocpage h1.toc-title {

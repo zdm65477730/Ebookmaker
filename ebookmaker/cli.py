@@ -11,14 +11,15 @@ from .builders.convert import convert_epub
 from .builders.epub import build_epub
 from .auto import (auto_dir_for, learn_font_map, learn_site, load_learned_site,
                    pua_ratio, save_descriptor)
+from . import bookindex
 from .cleaner import Cleaner
 from .config import AppConfig, load_config
 from .downloader import Crawler
-from .http_client import FetchError, HttpClient
+from .http_client import CloudflareChallengeError, FetchError, HttpClient
 from .log import get_logger, setup_logging
 from .proxy import ProxyPool
 from .ratelimit import DomainLimiter
-from .sites.base import SiteAdapter, collect_series_pages, normalize_toc
+from .sites.base import SiteAdapter, collect_series_pages, find_next_page_url, normalize_toc
 from .sites.generic import GenericSite
 from .sites.regex_site import RegexSite
 from .sites.registry import get_adapter, list_adapter_names
@@ -31,7 +32,7 @@ def _split_formats(text: str) -> List[str]:
     return [f.strip().lower() for f in text.split(",") if f.strip()]
 
 
-_SUBCOMMANDS = {"crawl", "run", "build", "convert", "clean"}
+_SUBCOMMANDS = {"crawl", "run", "build", "convert", "clean", "verify"}
 
 
 def normalize_argv(argv: List[str]) -> List[str]:
@@ -111,7 +112,8 @@ def _log_book_info(meta, chapter_count: int, cover_ok: bool):
 
 
 def cmd_crawl(cfg: AppConfig, url: str, site_name: str, rules_dirs: List[str],
-              force: bool) -> Optional[BookStore]:
+              force: bool,
+              sources: Optional[List[str]] = None) -> Optional[BookStore]:
     limiter = _make_limiter(cfg)
     proxy_pool, http = _wire_runtime(cfg, limiter)
     auto_dir = auto_dir_for(cfg.workdir, cfg.auto.save_dir) if cfg.auto.enabled else ""
@@ -167,8 +169,12 @@ def cmd_crawl(cfg: AppConfig, url: str, site_name: str, rules_dirs: List[str],
     meta.site = site.name
     store.save_meta(meta)
     store.save_toc(toc)
+    meta.cover_url = meta.cover_url or ""
     if meta.cover_url and not store.cover_path():
         _fetch_cover(store, http, meta, url)
+    if not store.cover_path():
+        _cover_from_other_sources(cfg, store, http, meta, url,
+                                  list(sources or []), rules_dirs)
 
     # 字体加密探测与自动解密（用首章页面），解密表随工作区沉淀
     font_map = _probe_and_decode_font(http, site, url, toc)
@@ -179,9 +185,60 @@ def cmd_crawl(cfg: AppConfig, url: str, site_name: str, rules_dirs: List[str],
 
     _log_book_info(meta, len(toc), bool(store.cover_path()))
     failed = crawler.crawl_chapters(toc, url, force=force)
+
+    # 跨源补全：空/可疑/过短章从同书其他源（--source + 书目索引）修复
+    try:
+        alt_urls = list(dict.fromkeys(
+            list(sources or [])
+            + bookindex.other_sources(cfg.workdir, meta.title, url)))
+        if alt_urls:
+            n = crawler.repair_from_sources(toc, url, alt_urls)
+            if n:
+                failed = [i for i in failed
+                          if (c := store.load_chapter(i)) is None
+                          or c.status != "ok"]
+    except KeyboardInterrupt:
+        raise
+    except Exception as e:  # noqa: BLE001 - 补全是增益，失败不影响已完成的爬取
+        log.warning("跨源补全阶段失败（跳过）: %s", e)
+
+    # 登记书目索引：本书这个源从此可供同书其他源的跨源补全使用
+    try:
+        bookindex.record(cfg.workdir, meta.title, url, toc)
+    except Exception as e:  # noqa: BLE001
+        log.debug("书目索引登记失败（不影响主流程）: %s", e)
+
     if failed:
         log.warning("仍有 %d 章未完成，可重新运行 crawl 续跑。", len(failed))
     return store
+
+
+def _cover_from_other_sources(cfg: AppConfig, store: BookStore, http: HttpClient,
+                              meta, book_url: str, extra: List[str],
+                              rules_dirs: List[str]):
+    """跨源封面兜底：主源书页没封面时，从书目索引/--source 的同书其他源找。
+
+    注意：无法自动判定“封面图内容与书名不符”（源站图片错位是站方数据问题），
+    那种情况需人工替换工作区 cover.jpg 后重新 build。
+    """
+    try:
+        alts = list(dict.fromkeys(
+            [u for u in extra if "://" in u]
+            + bookindex.other_sources(cfg.workdir, meta.title, book_url)))
+        for alt in alts:
+            try:
+                alt_site = get_adapter(alt, "", extra_rules_dirs=list(rules_dirs))
+                a_meta = alt_site.parse_meta(http.get(alt).text, alt)
+                if not a_meta.cover_url:
+                    continue
+                _fetch_cover(store, http, a_meta, alt)
+                if store.cover_path():
+                    log.info("本源无封面，已从同书其他源获取: %s", alt)
+                    return
+            except Exception:  # noqa: BLE001 - 兜底路径，单源失败继续下一个
+                continue
+    except Exception as e:  # noqa: BLE001
+        log.debug("跨源封面兜底失败（不阻塞）: %s", e)
 
 
 def _probe_and_decode_font(http: HttpClient, site, book_url: str, toc) -> dict:
@@ -219,6 +276,170 @@ def _fetch_cover(store: BookStore, http: HttpClient, meta, book_url: str):
         log.warning("封面下载失败: %s", e)
 
 
+# ---------- 成品审核（verify） ----------
+def _verify_read_epub(epub_path: str):
+    """从成品 EPUB 提取各章正文段落（审核面向交付物而非工作区缓存）。"""
+    import re as _re
+    import zipfile
+    out = {}
+    with zipfile.ZipFile(epub_path) as zf:
+        for name in zf.namelist():
+            m = _re.fullmatch(r"OEBPS/chapter(\d+)\.xhtml", name)
+            if not m:
+                continue
+            x = zf.read(name).decode("utf-8", "ignore")
+            out[int(m.group(1))] = _re.findall(r'<p class="indent">(.*?)</p>', x)
+    return out
+
+
+def cmd_verify(cfg: AppConfig, book_dir: str, url: str = "", samples: int = 5) -> int:
+    """审核成品质量：本地结构检查 +（给定 --url 时）源站实时抽样对照。
+
+    检查项：缺章 / 空章 / 质量可疑标记 / 重复章名行 / 导航块残留 /
+    推荐块残留 / 页尾续读标记残留；实时项：分页页数覆盖 / 字数覆盖比。
+    退出码：0=PASS，1=WARN，2=FAIL。
+    """
+    import random
+    import re
+    from .cleaner import Cleaner, CHAPTER_TITLE_RE
+    store = BookStore(os.path.abspath(book_dir))
+    meta = store.load_meta()
+    if meta is None:
+        log.error("工作区缺少 meta.json: %s", store.root)
+        return 2
+    toc = store.load_toc()
+    chapters = {c.index: c for c in store.iter_chapters()}
+    problems = []   # (级别, 描述)
+
+    missing = [i for i in range(1, len(toc) + 1) if i not in chapters]
+    if missing:
+        problems.append(("FAIL", "缺章 %d 个: %s" % (len(missing), missing[:10])))
+    empty = [i for i, c in chapters.items() if not c.paragraphs]
+    src_missing = [i for i in empty
+                   if "正文抽取为空" in (getattr(chapters[i], "problems", None) or [])]
+    other_empty = sorted(set(empty) - set(src_missing))
+    if src_missing:
+        problems.append(("WARN", "源站无正文 %d 章（成品已插占位说明）: %s"
+                         % (len(src_missing), src_missing[:10])))
+    if other_empty:
+        problems.append(("FAIL", "空章 %d 个: %s" % (len(other_empty), other_empty[:10])))
+    susp = [c.index for c in chapters.values() if getattr(c, "status", "ok") != "ok"]
+    if susp:
+        problems.append(("WARN", "质量可疑章 %d 个: %s" % (len(susp), susp[:10])))
+
+    n_title = re.sub(r"\s+", "", meta.title) if meta.title else ""
+    # 残留检查面向成品 EPUB（build 层还有 junk 行二次过滤与尾块截断，工作区缓存非最终形态）
+    epub_path = os.path.join(os.path.dirname(store.root), safe_dirname(meta.title) + ".epub")
+    chap_paras = _verify_read_epub(epub_path) if os.path.isfile(epub_path) else \
+        {i: c.paragraphs for i, c in chapters.items()}
+    if os.path.isfile(epub_path):
+        log.info("残留检查基于成品: %s", epub_path)
+    else:
+        log.warning("未找到成品 epub，残留检查退回工作区缓存（可能有 build 层差异）")
+    nav_bad, rec_bad, tail_bad = [], [], []
+    for i, ps in sorted(chap_paras.items()):
+        if not ps:
+            continue
+        if any(len(CHAPTER_TITLE_RE.findall(p)) >= 3 for p in ps):
+            nav_bad.append(i)
+        run = 0
+        for p in reversed(ps):     # 只统计章尾连续短行（与 cleaner 尾块规则同口径，
+            if len(p) <= 24 and "。" not in p:   # 章内对话高潮短行不算残留）
+                run += 1
+            else:
+                break
+        if run >= 4:
+            rec_bad.append(i)
+        last = ps[-1]
+        if (Cleaner._page_break_signal(last) or Cleaner._page_end_signal(last)) \
+                and "源站暂无正文" not in last:
+            tail_bad.append(i)
+    if nav_bad:
+        problems.append(("FAIL", "导航块残留 %d 章: %s" % (len(nav_bad), nav_bad[:10])))
+    if rec_bad:
+        problems.append(("FAIL", "推荐块残留 %d 章: %s" % (len(rec_bad), rec_bad[:10])))
+    if tail_bad:
+        problems.append(("FAIL", "章尾残留页尾标记 %d 章（分页可能未拼全）: %s"
+                         % (len(tail_bad), tail_bad[:10])))
+
+    if url:
+        limiter = DomainLimiter(rate_per_sec=cfg.rate.rate_per_sec,
+                                burst=cfg.rate.burst,
+                                cooldown_on_block=cfg.rate.cooldown_on_block)
+        _, http = _wire_runtime(cfg, limiter)
+        auto_dir = auto_dir_for(cfg.workdir, cfg.auto.save_dir) if cfg.auto.enabled else ""
+        site = get_adapter(url, "", extra_rules_dirs=[auto_dir] if auto_dir else [])
+        from .downloader import Crawler
+        from .sites.generic import content_oracle_lines
+        probe = Crawler(cfg, store, site, http, _make_cleaner(cfg))
+        entries = [(i, e) for i, e in enumerate(toc, 1) if i in chapters and chapters[i].paragraphs]
+        picks = random.sample(entries, min(max(1, samples), len(entries))) if entries else []
+        covered, depth_bad, thin_bad = 0, [], []
+        for i, e in picks:
+            try:
+                ch_url = site.chapter_url(url, e.get("href") if isinstance(e, dict) else e.href)
+                ctitle = e.get("title") if isinstance(e, dict) else e.title
+                html = http.get(ch_url).text
+                # 标尺：首页 trafilatura 抽取量 vs 成品全章字数（成品≥首页标尺即证明至少拿到一页，
+                # 分页越多富余越大；分页丢失/容器选偏都会跌破阈值）
+                oracle_chars = sum(len(l) for l in content_oracle_lines(html))
+                # 探测源站真实页数（链接 + 序列探针，带归属校验）
+                depth = 1
+                cur_html, cur_url = html, ch_url
+                while depth < cfg.fetch.max_next_pages:
+                    nxt = find_next_page_url(cur_html, cur_url)
+                    p2 = probe._probe_url(ch_url, depth + 1)
+                    cand = nxt if (nxt and nxt not in (cur_url, ch_url)) else p2
+                    if not cand or cand == cur_url:
+                        break
+                    try:
+                        cur_html = http.get(cand, referer=cur_url).text
+                    except FetchError:
+                        break
+                    if not probe._page_belongs(cur_html, cand, ctitle):
+                        break
+                    cur_url, depth = cand, depth + 1
+                covered += 1
+                stored_chars = sum(len(p) for p in chapters[i].paragraphs)
+                if oracle_chars and oracle_chars >= 200 and stored_chars < oracle_chars * 0.65:
+                    thin_bad.append((i, depth, stored_chars, oracle_chars))
+            except FetchError as ex:
+                log.warning("实时对照第 %d 章取页失败（跳过）: %s", i, ex)
+        if thin_bad:
+            problems.append(("FAIL", "实时对照字数覆盖不足（疑分页未拼全）%d 章: %s"
+                             % (len(thin_bad), thin_bad[:5])))
+        log.info("实时对照: 抽样 %d/%d 章可用", covered, len(picks))
+
+    fails = [p for lv, p in problems if lv == "FAIL"]
+    warns = [p for lv, p in problems if lv == "WARN"]
+    # 置信度分布报告（缓存中的成品形态值）
+    confs = [(c.index, getattr(c, "confidence", 1.0)) for c in chapters.values()]
+    if confs:
+        vals = sorted(v for _, v in confs)
+        median = vals[len(vals) // 2]
+        low = sorted((i for i, v in confs if v < cfg.cleaner.min_confidence),
+                     key=lambda i: dict(confs)[i])
+        log.info("=============== 审核结果 ===============")
+        log.info("章节: %d/%d（目录 %d）| 重复章名/挂件残留: %d 章 | 置信度中位 %.2f",
+                 len(chapters), len(toc), len(toc), len(nav_bad) + len(rec_bad) + len(tail_bad), median)
+        if low:
+            problems.append(("WARN", "低置信章 %d 个（建议降速重抓或人工抽检）: %s"
+                             % (len(low), low[:10])))
+            warns = [p for lv, p in problems if lv == "WARN"]
+    else:
+        log.info("=============== 审核结果 ===============")
+        log.info("章节: %d/%d（目录 %d）| 重复章名/挂件残留: %d 章",
+                 len(chapters), len(toc), len(toc), len(nav_bad) + len(rec_bad) + len(tail_bad))
+    for msg in fails:
+        log.error("FAIL %s", msg)
+    for msg in warns:
+        log.warning("WARN %s", msg)
+    if not problems:
+        log.info("PASS 全部检查通过（分页覆盖/无残留/无空章/无缺章）")
+        return 0
+    return 2 if fails else 1
+
+
 def cmd_build(cfg: AppConfig, store: BookStore, formats: List[str]) -> int:
     meta = store.load_meta()
     if meta is None:
@@ -239,6 +460,8 @@ def cmd_build(cfg: AppConfig, store: BookStore, formats: List[str]) -> int:
     rc = 0
     want = [f for f in formats if f in ("mobi", "azw3")]
     if want:
+        # 不再传原始小封面作为 --cover（会覆盖 EPUB 内已归一化的封面）；
+        # 由 --prefer-metadata-cover 从 EPUB 的 cover-image 读取高清封面
         outputs = convert_epub(epub_path, want, cfg.convert, meta.language)
         missing = set(want) - {os.path.splitext(o)[1].lstrip(".") for o in outputs}
         if missing:
@@ -382,11 +605,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     p_crawl.add_argument("--url", required=True, help="书籍目录页 URL")
     p_crawl.add_argument("--site", default="", help="强制指定站点适配器名")
     p_crawl.add_argument("--force", action="store_true", help="忽略缓存全部重爬")
+    p_crawl.add_argument("--source", action="append", default=None, metavar="URL",
+                         help="同一本书的其他源目录页（可重复），用于补齐空章/过短章")
 
     p_run = sub.add_parser("run", parents=[common], help="全流程：爬取→净化→制书→转换")
     p_run.add_argument("--url", required=True, help="书籍目录页 URL")
     p_run.add_argument("--site", default="", help="强制指定站点适配器名")
     p_run.add_argument("--force", action="store_true", help="忽略缓存全部重爬")
+    p_run.add_argument("--source", action="append", default=None, metavar="URL",
+                       help="同一本书的其他源目录页（可重复），用于补齐空章/过短章")
     p_run.add_argument("--formats", default="", help="输出格式，如 epub,mobi,azw3（默认取配置）")
     p_run.add_argument("--clean", action="store_true", help="成品产出后自动清理工作区中间文件")
 
@@ -407,6 +634,12 @@ def main(argv: Optional[List[str]] = None) -> int:
                          help="删除所有内容，包括成品书与输出目录本身")
     p_clean.add_argument("--dry-run", action="store_true", help="只展示将清理的内容，不删除")
 
+    p_verify = sub.add_parser("verify", parents=[common],
+                              help="审核成品质量：分页完整性/残留垃圾/空章；加 --url 做源站实时对照")
+    p_verify.add_argument("book_dir", help="书籍工作区目录（books/<书名>）")
+    p_verify.add_argument("--url", default="", help="书籍目录页 URL（启用实时抽样对照）")
+    p_verify.add_argument("--samples", type=int, default=5, help="实时对照抽样章数（默认 5）")
+
     if not argv_in:
         parser.print_help()
         return 1
@@ -423,6 +656,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     except KeyboardInterrupt:
         log.warning("已中断；crawl/run 重新执行同一命令即可断点续跑")
         return 130
+    except CloudflareChallengeError as e:
+        log.error("被 Cloudflare 拦截: %s", e)
+        log.error("该站启用了浏览器人机验证，纯 HTTP 爬虫无法通过；请改用未开此防护的镜像站/源站")
+        return 3
     except FetchError as e:
         log.error("网络获取失败: %s", e)
         log.error("可稍后重试，或用 --proxy-source list/api/file 启用代理后重跑同一命令")
@@ -431,11 +668,13 @@ def main(argv: Optional[List[str]] = None) -> int:
 
 def _dispatch(args, cfg: AppConfig) -> int:
     if args.command == "crawl":
-        store = cmd_crawl(cfg, args.url, args.site, args.rules_dir, args.force)
+        store = cmd_crawl(cfg, args.url, args.site, args.rules_dir, args.force,
+                          args.source)
         return 0 if store else 1
 
     if args.command == "run":
-        store = cmd_crawl(cfg, args.url, args.site, args.rules_dir, args.force)
+        store = cmd_crawl(cfg, args.url, args.site, args.rules_dir, args.force,
+                          args.source)
         if store is None:
             return 1
         formats = _split_formats(args.formats) if args.formats else cfg.formats
@@ -458,6 +697,9 @@ def _dispatch(args, cfg: AppConfig) -> int:
 
     if args.command == "clean":
         return cmd_clean(cfg, args.targets, args.everything, args.dry_run)
+
+    if args.command == "verify":
+        return cmd_verify(cfg, args.book_dir, args.url, args.samples)
 
     if args.command == "convert":
         epub = os.path.abspath(args.epub)

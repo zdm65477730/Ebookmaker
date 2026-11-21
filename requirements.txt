@@ -3,6 +3,8 @@ beautifulsoup4>=4.10
 lxml>=4.9
 PyYAML>=6.0
 charset-normalizer>=3.0
+# 封面归一化（小封面放大到 Kindle 可用分辨率；缺失则按原尺寸打包）
+Pillow>=9.0
 # 可选：通用站点正文抽取兜底
 # trafilatura>=1.6
 # 可选：加密字体站点自动解密（woff2 需 brotli）

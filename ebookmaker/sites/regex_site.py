@@ -23,7 +23,7 @@ import os
 import re
 from typing import Dict, List, Optional
 
-from .base import (SiteAdapter, clean_author, clean_book_title, container_to_lines,
+from .base import (SiteAdapter, anchor_href, clean_author, clean_book_title, container_to_lines,
                    filter_same_host, looks_like_chapter, make_soup,
                    normalize_toc, parse_og_meta)
 from ..log import get_logger
@@ -59,6 +59,18 @@ class RegexSite(SiteAdapter):
         self._content_selector = content.get("selector")
         self._content_re = re.compile(content["regex"]) if content.get("regex") else None
 
+    def has_content_container(self, html: str) -> bool:
+        """描述符站点：按学习到的正文选择器/正则判定页面是否含正文容器。"""
+        try:
+            if self._content_re is not None:
+                return bool(self._content_re.search(html))
+            if self._content_selector:
+                node = make_soup(html).select_one(self._content_selector)
+                return node is not None and len(node.get_text(strip=True)) > 20
+        except Exception:
+            return False
+        return False
+
     def parse_meta(self, html: str, url: str) -> BookMeta:
         meta = parse_og_meta(make_soup(html), url)
         meta.site = self.name
@@ -84,9 +96,10 @@ class RegexSite(SiteAdapter):
                 # 非 <a> 容器自动展开为其内部全部链接
                 anchors = [node] if node.name == "a" else node.find_all("a")
                 for a in anchors:
-                    href = (a.get("href") or "").strip()
+                    # 优先 href，href 为 javascript: 时回退 onclick 内的 location.href
+                    href = anchor_href(a)
                     title = a.get_text(strip=True)
-                    if href and title and not href.startswith(("javascript:", "#")) \
+                    if href and title and not href.startswith("#") \
                             and looks_like_chapter(href, title):
                         entries.append(TocEntry(href=href, title=title))
         if entries:

@@ -43,6 +43,14 @@ UA_POOL = [
 
 META_CHARSET_RE = re.compile(rb"<meta[^>]+charset=[\"']?([a-zA-Z0-9_\-]+)", re.I)
 
+# Cloudflare 托管型/交互式人机挑战页特征（区别于真·限速 429）。
+# 纯 HTTP 客户端无法执行其 JS 预言机，重试与降速均无意义，应快速失败。
+CF_CHALLENGE_RE = re.compile(
+    r"Just a moment|\b(?:window\.)?_?cf_chl_opt\b|window\._cf_chl|"
+    r"challenge-platform|cf_chl_jschl|__cf_chl",
+    re.I,
+)
+
 BASE_HEADERS = {
     "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
     "accept-language": "zh-CN,zh;q=0.9,en;q=0.8",
@@ -56,6 +64,10 @@ BASE_HEADERS = {
 
 class FetchError(Exception):
     """重试耗尽后抛出。"""
+
+
+class CloudflareChallengeError(FetchError):
+    """命中 Cloudflare 人机验证：纯 HTTP 客户端无法通过其浏览器挑战。"""
 
 
 @dataclass
@@ -151,6 +163,25 @@ class HttpClient:
         except (TypeError, ValueError, AttributeError):
             return None
 
+    @staticmethod
+    def _is_cloudflare_challenge(resp, stream: bool) -> bool:
+        """判定是否为 Cloudflare 人机挑战页（而非普通 403/429 限速）。
+
+        优先认 cf-mitigated: challenge 响应头（CF 官方机器信号），
+        再回退到挑战页正文特征；非 HTML/二进制流不读正文。
+        """
+        if (resp.headers.get("cf-mitigated") or "").strip().lower() == "challenge":
+            return True
+        if stream:
+            return False
+        ctype = (resp.headers.get("content-type") or "").lower()
+        if "html" not in ctype and ctype:
+            return False
+        try:
+            return bool(CF_CHALLENGE_RE.search(resp.text[:2048]))
+        except Exception:
+            return False
+
     def get(self, url: str, referer: Optional[str] = None, cookie: Optional[str] = None,
             stream: bool = False, as_text: bool = True, timeout: Optional[float] = None) -> HttpResponse:
         """抓取 URL，带重试/退避/反爬处理。失败抛 FetchError。"""
@@ -197,6 +228,10 @@ class HttpClient:
 
             if resp.status_code in BLOCK_STATUS:
                 last_error = "HTTP {}".format(resp.status_code)
+                # Cloudflare 人机验证：纯 HTTP 客户端无法通过，重试/降速均无意义 → 快速失败
+                if self._is_cloudflare_challenge(resp, stream):
+                    raise CloudflareChallengeError(
+                        "{} 启用了 Cloudflare 人机验证（HTTP {}）".format(url, resp.status_code))
                 if proxy is not None and self._on_proxy_error:
                     self._on_proxy_error(proxy)
                 # 429/503 通常是速率超限：尊重站点 Retry-After，limiter 内部自适应降速

@@ -136,6 +136,38 @@ class BookStore:
         ch = self.load_chapter(index)
         return ch is not None and ch.status == "ok"
 
+    def delete_chapter(self, index: int) -> None:
+        """删除单章缓存（目录结构变更时作废旧索引）。"""
+        path = self.chapter_path(index)
+        with self._lock:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+
+    def shift_chapters(self, start: int, delta: int) -> None:
+        """将 index >= start 的章节缓存文件整体平移 delta（跨源补抓插洞/回滚，
+        避免目录新增一章导致其后全部缓存被当作错位作废）。"""
+        idxs = []
+        try:
+            for name in os.listdir(self.chapters_dir):
+                if name.endswith(".json"):
+                    try:
+                        idxs.append(int(name[:-5]))
+                    except ValueError:
+                        pass
+        except OSError:
+            return
+        if not idxs:
+            return
+        rng = (range(max(idxs), start - 1, -1) if delta > 0
+               else range(start, max(idxs) + 1))
+        with self._lock:
+            for i in rng:
+                src = self.chapter_path(i)
+                if os.path.isfile(src):
+                    os.replace(src, self.chapter_path(i + delta))
+
     def iter_chapters(self) -> List[ChapterData]:
         """按目录顺序返回全部已缓存章节（缺失的跳过）。"""
         result = []

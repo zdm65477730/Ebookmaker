@@ -22,6 +22,8 @@ dependencies = [
 extract = ["trafilatura>=1.6"]
 # 加密字体站点自动解密（woff2 需 brotli）
 font = ["fonttools>=4.40", "brotli>=1.0"]
+# 小封面放大到 Kindle 可用分辨率（缺失则按原尺寸打包，不阻塞出书）
+cover = ["Pillow>=9.0"]
 dev = ["pytest>=7.0"]
 
 [project.scripts]
@@ -31,4 +33,4 @@ ebookmaker = "ebookmaker.cli:main"
 include = ["ebookmaker*"]
 
 [tool.setuptools.package-data]
-ebookmaker = ["builders/*.css", "builders/*.jpg"]
+ebookmaker = ["builders/*.css", "builders/*.jpg", "builders/*.xhtml"]

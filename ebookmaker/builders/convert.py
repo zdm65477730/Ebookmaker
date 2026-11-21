@@ -26,6 +26,15 @@ CALIBRE_INSTALL_HINT = """未找到 calibre 的 ebook-convert 工具，跳过 az
 也可在 config.yaml 的 convert.ebook_convert_path 指定已有路径。"""
 
 
+def _mark_personal(path):
+    """标记为个人文档(PDOC)，规避 Kindle 联网按 ASIN 覆盖封面（详见 mobipatch）。"""
+    try:
+        from ..mobipatch import mark_personal_document
+        mark_personal_document(path)
+    except Exception as e:  # 修补失败绝不影响出书
+        log.debug("个人文档标记跳过 %s: %s", path, e)
+
+
 def find_ebook_convert(cfg: ConvertConfig) -> Optional[str]:
     if cfg.ebook_convert_path and os.path.isfile(cfg.ebook_convert_path):
         return cfg.ebook_convert_path
@@ -65,8 +74,11 @@ def find_kindlegen(cfg: ConvertConfig) -> Optional[str]:
 
 
 def convert_epub(epub_path: str, formats: List[str], cfg: ConvertConfig,
-                 language: str = "zh") -> List[str]:
-    """把 epub 转为要求的格式集合，返回生成文件路径列表。"""
+                 language: str = "zh", cover_path: Optional[str] = None) -> List[str]:
+    """把 epub 转为要求的格式集合，返回生成文件路径列表。
+
+    cover_path：显式封面图，直接交给 ebook-convert 当封面（保证 Kindle 书库缩略图）。
+    """
     formats = [f.lower() for f in formats if f.lower() in ("azw3", "mobi")]
     if not formats:
         return []
@@ -80,15 +92,19 @@ def convert_epub(epub_path: str, formats: List[str], cfg: ConvertConfig,
             cmd = [ebook_convert, epub_path, out,
                    "--language=" + ("zh" if language.startswith("zh") else language),
                    "--input-profile=kindle",
-                   "--output-profile=kindle_pw3" if fmt == "azw3" else "--output-profile=generic_eink",
+                   "--output-profile=kindle_pw3" if fmt == "azw3" else "--output-profile=kindle",
                    "--chapter-mark=pagebreak",
                    "--max-toc-links=0",
                    "--use-auto-toc",
-                   "--mobi-toc-at-start" if fmt == "mobi" else "--insert-metadata",
                    "--prefer-metadata-cover",
                    "--remove-paragraph-spacing-indent-size=2"]
+            if fmt == "mobi":
+                cmd.append("--mobi-toc-at-start")
+            if cover_path and os.path.isfile(cover_path):
+                cmd.append("--cover=" + cover_path)
             if _run(cmd, "ebook-convert -> " + fmt):
                 if os.path.isfile(out):
+                    _mark_personal(out)
                     outputs.append(out)
         if outputs:
             return outputs
@@ -104,6 +120,7 @@ def convert_epub(epub_path: str, formats: List[str], cfg: ConvertConfig,
             for fmt in formats:
                 out = base + "." + fmt
                 if os.path.isfile(out):
+                    _mark_personal(out)
                     outputs.append(out)
         return outputs
 

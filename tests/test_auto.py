@@ -3,6 +3,7 @@
 
 import os
 
+from ebookmaker.http_client import FetchError
 from ebookmaker.auto import (css_selector, learn_site, load_learned_site,
                              save_descriptor)
 from ebookmaker.cleaner import Cleaner
@@ -62,8 +63,10 @@ class FakeHttp:
             return R(toc_page())
         base = url.rstrip("/").split("/")[-1].replace(".html", "")
         doc_id = int(base.split("_")[0])
-        if "_2" in base:                       # 第二页
-            return R(chapter_page2(doc_id))
+        if "_2" in base:                       # 第二页（仅 paged 章节存在，其余 404）
+            if self.paged and doc_id % 3 == 0:
+                return R(chapter_page2(doc_id))
+            raise FetchError("404 " + url)
         paged = self.paged and doc_id % 3 == 0  # 每3章有一章分两页
         return R(chapter_page(doc_id, paged=paged))
 
@@ -145,3 +148,39 @@ def test_crawler_joins_paginated_chapter(tmp_path):
     assert crawler._fetch_one(1, toc[0], BOOK_URL) is True   # 100.html 不分页
     ch1 = store.load_chapter(1)
     assert "城头的黑影" not in "".join(ch1.paragraphs)
+
+
+# ---------- 学习器须区分“页面外壳”与真正文容器（woyaodu 形态回归） ----------
+_SHELL_SIDE = ("本站其他作品同样出色，欢迎读者朋友继续浏览阅读体验更佳" * 60)   # 壳内固定侧栏（跨章不变）
+
+
+class ShellTrapHttp:
+    """div.content-shell 外壳包含固定侧栏荐书区 + #content 正文（每章全不同）。"""
+
+    def get(self, url, referer=None, **kw):
+        class R:
+            def __init__(self, text):
+                self.text = text
+        num = url.rsplit("/", 1)[-1].split(".")[0]
+        # 每章正文用章号作种子的随机词序，跨章 3-gram 重合≈ 0（模拟真实小说）
+        # 注：需达 min_cjk(200) 才会进候选列表，这里每句约 10 字共 30 句 = 300 字
+        import random
+        w = ["雪夜", "营地", "号角", "老兵", "粥", "校场", "脚印", "账房", "算盘", "粮车",
+             "斥候", "家书", "铁匠", "炉火", "马棚", "城墙", "裂缝", "朱批", "长矛", "伤兵",
+             "药味", "口令", "驮马", "干粮", "旗杆", "石堰", "火把", "盾车", "驿马", "旧甲",
+             "剑术", "战马", "军功", "刀伤", "军号", "队形", "将领", "军师", "马厩", "哨塔"]
+        rng = random.Random(num)
+        body = "\n".join("".join(rng.sample(w, 10)) + "。" for _ in range(30))
+        html = ('<html><body><div class="content-shell">'
+                '<div class="side-content">' + _SHELL_SIDE + '</div>'
+                '<div id="content">' + body + '</div>'
+                '</div></body></html>')
+        return R(html)
+
+
+def test_learner_prefers_true_content_over_shell():
+    toc = [TocEntry(href="c{}.html".format(i), title="第{}章 x".format(i)) for i in range(1, 31)]
+    cfg = AutoConfig(samples=5)
+    d = learn_site(ShellTrapHttp(), BOOK_URL, toc, Cleaner(CleanerConfig()), cfg)
+    assert d is not None
+    assert d["content"]["selector"] == "#content"

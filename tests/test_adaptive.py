@@ -472,3 +472,57 @@ def test_progress_tty_draws_bar(monkeypatch):
     p.finish()
     out = stream.getvalue()
     assert "\r" in out and "100.0%" in out and "章/秒" in out
+
+
+# ---------- onclick 跳转式目录 + 数字目录分页（woyaodu 实测形态） ----------
+def _wyd_dir_page(base="/xiaoshuo/842/842172"):
+    """目录分页页：章节链接是 <a onclick=location.href>，页码在 select option。"""
+    chs = "".join(
+        '<dd><a onclick="location.href=\'{}/{}.html\'">第{}章 标题{}</a></dd>'.format(base, 182801292 + i, i, i)
+        for i in range(1, 41))
+    opts = "".join('<option value="{}/{}">{}</option>'.format(base, i, i) for i in range(1, 13))
+    nxt = '<a href="javascript:;" onclick="location.href=\'{}/2/\'">下一页</a>'.format(base)
+    return '<html><body><dl class="panel-chapterlist">{}</dl><select>{}</select>{}</body></html>'.format(
+        chs, opts, nxt)
+
+
+def test_parse_toc_reads_onclick_chapter_links():
+    site = GenericSite()
+    toc = site.parse_toc(_wyd_dir_page(), "https://w.test/xiaoshuo/842/842172/1/")
+    assert len(toc) == 40
+    assert toc[0].href.endswith("182801293.html")
+
+
+def test_series_pages_numeric_dir_with_numeric_labels():
+    urls = find_series_pages(_wyd_dir_page(), "https://w.test/xiaoshuo/842/842172/1/")
+    # 兄弟页 /2/ ../ /12/ 全部发现，/1/ 自指排除
+    assert len(urls) == 11
+    assert "https://w.test/xiaoshuo/842/842172/2/" in urls
+    assert "https://w.test/xiaoshuo/842/842172/1/" not in urls
+
+
+def test_numeric_dir_page_not_confused_with_chapter_docs():
+    # 正文页里的 /base/12345.html 章节链接与裸 /base/99999/（非数字短标签）不能误当分页
+    html = ('<a href="/xiaoshuo/842/842172/182801293.html">第1章 开头</a>'
+            '<a href="/xiaoshuo/842/842172/99999/">这是一章正文链接的标题文字</a>')
+    urls = find_series_pages(html, "https://w.test/xiaoshuo/842/842172/")
+    assert urls == []
+
+
+def test_collect_series_pages_walks_numeric_dir_pagination():
+    base = "/xiaoshuo/842/842172"
+
+    def get_html(url):
+        n = int(url.rstrip("/").rsplit("/", 1)[1])
+        opts = "".join('<option value="{}">{}</option>'.format(base + "/" + str(i), i)
+                       for i in range(1, 13)) if n == 1 else \
+               '<option value="{}">{}</option>'.format(base + "/" + str(n - 1), n - 1)
+        chs = "".join('<a onclick="location.href=\'{}\'">第{}章 x</a>'.format(
+            base + "/{}.html".format(n * 100 + k), n * 100 + k) for k in range(1, 6))
+        return "<html><body><dl>{}</dl><select>{}</select></body></html>".format(chs, opts)
+
+    pages = collect_series_pages(get_html(base + "/1/"), "https://w.test" + base + "/",
+                                 get_html)
+    got = [u for u, _ in pages]
+    assert "https://w.test" + base + "/2/" in got
+    assert len(got) >= 2   # 首页→/1/ 种子→逐页展开

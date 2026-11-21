@@ -38,12 +38,20 @@ def heuristic_content(soup):
 
 
 def _trafilatura_lines(html: str) -> List[str]:
+    """trafilatura 主抽取（参考 https://github.com/adbar/trafilatura）：
+    favor_recall 保全文、不压缩空行、保留段落切分；标题/重复行由下游 cleaner 锚定去重。"""
     try:
         import trafilatura
     except ImportError:
         return []
-    text = trafilatura.extract(html, include_comments=False, favor_precision=True) or ""
-    return [l for l in text.split("\n") if l.strip()]
+    text = trafilatura.extract(html, include_comments=False, include_tables=False,
+                               favor_recall=True, no_fallback=False) or ""
+    return [l.strip() for l in text.split("\n") if l.strip()]
+
+
+def content_oracle_lines(html: str) -> List[str]:
+    """正文完整性标尺：与站点路径抽取并行对比用（trafilatura 未安装时返回空）。"""
+    return _trafilatura_lines(html)
 
 
 class GenericSite(BiqugeStyleSite):
