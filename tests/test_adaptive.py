@@ -7,7 +7,8 @@ from ebookmaker.auto import (font_bytes_to_map, learn_font_map, pua_ratio)
 from ebookmaker.cleaner import Cleaner
 from ebookmaker.config import CleanerConfig
 from ebookmaker.downloader import Progress
-from ebookmaker.sites.base import clean_author, clean_book_title, find_series_pages
+from ebookmaker.sites.base import (clean_author, clean_book_title, collect_series_pages,
+                                   find_series_pages)
 from ebookmaker.sites.generic import GenericSite
 from ebookmaker.sites.regex_site import RegexSite
 
@@ -118,6 +119,76 @@ def test_find_series_pages():
     assert set(urls) == {MAIN + "/html/490/490651_2/",
                          MAIN + "/html/490/490651_4/",
                          MAIN + "/html/490/490651_6/"}
+
+
+def test_find_series_pages_reads_select_options():
+    # 真实 bqg2 目录页：页码列表是 <select> 的 option value，<a> 只有“下一页”
+    html = """
+    <select onchange="location.href=this.value">
+    <option value="/html/490/490651_2/" >第101-200章</option>
+    <option value="/html/490/490651_3/" selected>第201-300章</option>
+    <option value="/html/490/490651/999.html">非分页</option>
+    </select>
+    <a href="/html/490/490651/1.html">第1章</a>
+    <a href="https://m.bqg2.org/html/490/490651_9/">镜像站</a>
+    """
+    urls = find_series_pages(html, MAIN + "/html/490/490651")
+    assert set(urls) == {MAIN + "/html/490/490651_2/", MAIN + "/html/490/490651_3/"}
+
+
+def _neighbor_page(n, total):
+    """只渲染相邻页链接的目录页（上一页/下一页）。"""
+    links = []
+    if n > 1:
+        links.append('<a href="/html/490/490651_{0}/">上一页</a>'.format(n - 1))
+    if n < total:
+        links.append('<a href="/html/490/490651_{0}/">下一页</a>'.format(n + 1))
+    links.append('<a href="/html/490/490651/{0}.html">第{0}章</a>'.format(n))
+    return "".join(links)
+
+
+def test_collect_series_pages_follows_neighbor_only_chain():
+    total = 5
+    fetched = []
+
+    def get_html(url):
+        n = int(url.rstrip("/").rsplit("_", 1)[1])
+        fetched.append(n)
+        return _neighbor_page(n, total)
+
+    pages = collect_series_pages(_neighbor_page(1, total), MAIN + "/html/490/490651", get_html)
+    assert [u for u, _ in pages] == [MAIN + "/html/490/490651_{}/".format(i)
+                                     for i in range(2, total + 1)]
+    assert sorted(fetched) == [2, 3, 4, 5]
+
+
+def _paged_list_page(n, total):
+    """首页就列齐全部页码的目录页。"""
+    opts = "".join('<option value="/html/490/490651_{0}/">第{0}页</option>'.format(i)
+                   for i in range(2, total + 1))
+    return '<select onchange="location.href=this.value">{0}</select>' \
+           '<a href="/html/490/490651/{1}.html">第{1}章</a>'.format(opts, n)
+
+
+def test_collect_series_pages_survives_page_failure():
+    def get_html(url):
+        if url.endswith("_3/"):
+            raise RuntimeError("boom")
+        return _neighbor_page(int(url.rstrip("/").rsplit("_", 1)[1]), 4)
+
+    pages = collect_series_pages(_paged_list_page(1, 4), MAIN + "/html/490/490651", get_html)
+    assert [u for u, _ in pages] == [MAIN + "/html/490/490651_2/",
+                                     MAIN + "/html/490/490651_4/"]
+
+
+def test_collect_series_pages_respects_page_cap():
+    def get_html(url):
+        n = int(url.rstrip("/").rsplit("_", 1)[1])
+        return _neighbor_page(n, 999)
+
+    pages = collect_series_pages(_neighbor_page(1, 999), MAIN + "/html/490/490651",
+                                 get_html, max_pages=3)
+    assert len(pages) == 3
 
 
 # ---------- 字体加密检测与解密 ----------

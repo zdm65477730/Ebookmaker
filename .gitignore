@@ -1,6 +1,6 @@
-books/
-# 站点学习产物（运行时生成的结构描述符）
-sites/
+/books/
+# 站点学习产物（运行时生成的结构描述符）；必须锚定到工程根，否则会连带忽略包内 ebookmaker/sites/
+/sites/
 venv/
 __pycache__/
 *.pyc

@@ -18,7 +18,7 @@ from .http_client import FetchError, HttpClient
 from .log import get_logger, setup_logging
 from .proxy import ProxyPool
 from .ratelimit import DomainLimiter
-from .sites.base import SiteAdapter, find_series_pages, normalize_toc
+from .sites.base import SiteAdapter, collect_series_pages, normalize_toc
 from .sites.generic import GenericSite
 from .sites.regex_site import RegexSite
 from .sites.registry import get_adapter, list_adapter_names
@@ -135,17 +135,12 @@ def cmd_crawl(cfg: AppConfig, url: str, site_name: str, rules_dirs: List[str],
 
     # 目录分页自动合并（如 /490/651_5/ 的 _1.._N 兄弟页，每页只含部分章节）
     if toc:
-        extra = find_series_pages(html, url)
+        extra = collect_series_pages(html, url, lambda pu: http.get(pu, referer=url).text)
         if extra:
             log.info("检测到目录分页（共 %d 页），合并全部章节...", len(extra) + 1)
             entries = list(toc)
-            for pu in extra:
-                try:
-                    ph = http.get(pu, referer=url).text
-                except FetchError as e:
-                    log.warning("目录页获取失败，跳过 %s: %s", pu, e)
-                    continue
-                entries.extend(site.parse_toc(ph, pu))
+            for _, ph in extra:
+                entries.extend(site.parse_toc(ph, url))
             toc = normalize_toc(entries)
 
     if not toc:
@@ -428,13 +423,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     except KeyboardInterrupt:
         log.warning("已中断；crawl/run 重新执行同一命令即可断点续跑")
         return 130
-    except Exception as e:
-        from .http_client import FetchError
-        if isinstance(e, FetchError):
-            log.error("网络获取失败: %s", e)
-            log.error("可稍后重试，或用 --proxy-source list/api/file 启用代理后重跑同一命令")
-            return 2
-        raise
+    except FetchError as e:
+        log.error("网络获取失败: %s", e)
+        log.error("可稍后重试，或用 --proxy-source list/api/file 启用代理后重跑同一命令")
+        return 2
 
 
 def _dispatch(args, cfg: AppConfig) -> int:
