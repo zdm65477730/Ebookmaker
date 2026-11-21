@@ -1,0 +1,91 @@
+/* ebookmaker EPUB 排版样式（基于旧 template/OEBPS/style.css 整理） */
+body {
+    margin: 0;
+    padding: 0;
+    font-family: serif;
+}
+
+/* 章节标题：独占一页顶部 */
+h1.chapter-title {
+    font-size: 1.6em;
+    font-weight: bold;
+    text-align: center;
+    margin: 1.2em 0 1.4em 0;
+    page-break-before: always;
+    page-break-after: avoid;
+}
+
+/* 正文段落：两字符首行缩进，段间距，合理行距 */
+p.indent {
+    font-size: 1em;
+    line-height: 1.6;
+    text-indent: 2em;
+    margin: 0 0 0.4em 0;
+    text-align: justify;
+    orphans: 2;
+    widows: 2;
+}
+
+/* 无缩进段（引言等） */
+p.plain {
+    font-size: 1em;
+    line-height: 1.6;
+    margin: 0 0 0.4em 0;
+}
+
+/* 封面页 */
+div.cover {
+    text-align: center;
+    margin: 0;
+    padding: 0;
+    page-break-after: always;
+}
+
+div.cover img {
+    max-width: 100%;
+    max-height: 100%;
+}
+
+/* 扉页（书名/作者） */
+div.titlepage {
+    margin-top: 35%;
+    text-align: center;
+    page-break-after: always;
+}
+
+p.booktitle {
+    font-size: 2em;
+    font-weight: bold;
+    margin-bottom: 0.6em;
+}
+
+p.bookauthor {
+    font-size: 1.1em;
+}
+
+p.bookmeta {
+    font-size: 0.85em;
+    color: #666;
+    margin-top: 2em;
+}
+
+/* 目录页 */
+div.tocpage h1.toc-title {
+    font-size: 1.4em;
+    text-align: center;
+    margin: 1em 0;
+}
+
+dl.toc {
+    margin: 0;
+    padding: 0;
+}
+
+dl.toc dt {
+    margin: 0.15em 0;
+    font-size: 0.95em;
+}
+
+dl.toc dt a {
+    text-decoration: none;
+}

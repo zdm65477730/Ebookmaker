@@ -1,1 +1,10 @@
-ebooks/*
+books/
+# 站点学习产物（运行时生成的结构描述符）
+sites/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+build/
+dist/

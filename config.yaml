@@ -1,0 +1,64 @@
+# ebookmaker 全局配置示例（所有键可省略，省略即用默认值）
+# 命令行参数优先级高于本文件。
+
+# 书籍工作区根目录；成品电子书输出到 workdir/<书名>.epub 等
+workdir: books
+
+# 默认输出格式（run/build 未指定 --formats 时）
+formats: [epub, mobi, azw3]
+
+fetch:
+  threads: 8              # 章节下载线程数
+  timeout_connect: 10
+  timeout_read: 15
+  retry_count: 5          # 单章重试次数（含退避）
+  backoff_base: 1.0       # 指数退避基数（秒）
+  backoff_max: 60
+  jitter_min: 0.1         # 每请求随机延迟下界（令牌桶之外再加一层错峰）
+  jitter_max: 0.5
+  verify_ssl: false       # 小说站证书常失效
+  cookie: ""              # 站点 Cookie（可被 --cookie 覆盖）
+  max_next_pages: 8       # 章节分页自动拼接的最大页数
+
+rate:
+  rate_per_sec: 5.0       # 每域名速率上限（AIMD 自适应：429/封禁减半，连续成功逐步回升至此上限）
+  burst: 5
+  cooldown_on_block: 20   # 命中反爬后的域名冷却（秒）
+
+proxy:
+  source: none            # none | list | api | file
+  list_providers: [kuaidaili, jiangxianli]   # list 源：内置免费代理列表
+  list_pages: 5
+  api_url: ""             # api 源：返回 ip:port 文本的接口
+  file_path: ""           # file 源：本地 ip:port 列表文件
+  check_url: http://httpbin.org/ip           # 代理连通性校验地址
+  max_proxy: 100
+  min_alive: 4            # 低于存活数自动补充
+  fail_limit: 3           # 连续失败拉黑阈值
+
+cleaner:
+  min_chapter_len: 200    # 少于该字数判定可疑并补爬
+  junk_line_ratio: 0.3    # 高频广告行判定阈值（章首/章尾出现比例）
+  junk_line_max_len: 60
+  fix_punctuation: true
+  drop_site_name_lines: true
+
+auto:
+  enabled: true           # 站点自动适配：未命中规则时采样学习并落盘复用
+  samples: 5              # 学习采样章节数
+  min_cjk: 200            # 候选正文容器清洗后最少中文字数
+  save_dir: ""            # 学习规则目录，空为 <工程根>/sites
+
+cleanup:
+  auto: false             # true 时 run/build 产出后自动清工作区缓存（保留成品书）
+
+epub:
+  publisher: Ebookmaker
+  rights: Created with Ebookmaker v2.0
+  language: zh-CN
+
+convert:
+  tools_base_path: tools          # kindlegen 二进制目录（回退方案）
+  ebook_convert_path: ""          # calibre 路径，留空自动探测
+  kindlegen_compression_level: "1"
+  kindlegen_locale: zh
