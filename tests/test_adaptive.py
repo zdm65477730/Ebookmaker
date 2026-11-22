@@ -104,6 +104,28 @@ def test_toc_kept_when_all_external():
     assert len(toc) == 8
 
 
+def test_fallback_toc_rejects_mixed_wrapper_ad_links():
+    # 真实幻笔阁形态：页面里混有 /xiazai/ 推书广告区块，外层包装
+    # 容器纯度不足，只认同目录纯净的章节列表容器，广告不计入章节数
+    rows = "".join('<a href="/read/9/%d.html">第%d章 正文</a>' % (170899000 + i, i)
+                   for i in range(1, 21))
+    ads = "".join('<a href="/xiazai/10500%d.html">书%d相关搜索</a>' % (i, i)
+                  for i in range(19))
+    html = ('<div class="site"><div class="wrap"><div class="ch-grid">' + rows +
+            '</div><div class="hot">' + ads + '</div></div></div>')
+    toc = GenericSite().parse_toc(html, "https://h.test/book/9/index_1.html")
+    assert len(toc) == 20 and all(e.href.startswith("/read/") for e in toc)
+
+
+def test_fallback_toc_drops_self_referencing_toc_link():
+    # 列表容器里混有指回目录页自身的链接：必须丢弃，不得当成章节
+    rows = "".join('<a href="/b/1/c%d.html">第%d章 正文</a>' % (i, i) for i in range(1, 21))
+    html = '<div class="list">' + rows + '<a href="/b/1/index_2.html">第21章 前言</a></div>'
+    toc = GenericSite().parse_toc(html, "https://h.test/b/1/index_2.html")
+    assert len(toc) == 20
+    assert all(not e.href.endswith("index_2.html") for e in toc)
+
+
 # ---------- 目录分页兄弟页 ----------
 def test_find_series_pages():
     # 真实站点（如 bqg2）目录分页链接为根相对形式
@@ -134,6 +156,72 @@ def test_find_series_pages_reads_select_options():
     """
     urls = find_series_pages(html, MAIN + "/html/490/490651")
     assert set(urls) == {MAIN + "/html/490/490651_2/", MAIN + "/html/490/490651_3/"}
+
+
+def test_find_series_pages_index_html_select_pager():
+    # 真实幻笔阁形态：文件名式分页 index_N.html + <select> 页码条，
+    # 第一页写作书目录根（无后缀 option）；倒序链接不是分页
+    html = """
+    <select onchange="self.location.href=options[selectedIndex].value">
+    <option value="/book/115090/">第1-100章</option>
+    <option value="/book/115090/index_1.html" selected>第101-200章</option>
+    <option value="/book/115090/index_2.html">第201-300章</option>
+    <option value="/book/115090/index_3.html">第301-400章</option>
+    </select>
+    <a href="/book/115090/">上一页</a><a href="/book/115090/index_2.html">下一页</a>
+    <a href="/book/115090/index_dx1.html">倒序 ↓</a>
+    """
+    urls = find_series_pages(html, "https://h.test/book/115090/index_1.html")
+    assert "https://h.test/book/115090/index_2.html" in urls
+    assert "https://h.test/book/115090/index_3.html" in urls
+    assert "https://h.test/book/115090/" in urls                   # 无后缀第一页
+    assert "https://h.test/book/115090/index_1.html" not in urls   # 自指排除
+    assert all("dx" not in u for u in urls)
+
+
+def test_find_series_pages_index_pager_from_first_page():
+    # 同一页码条从书目录根（第一页）也能整条展开
+    html = """
+    <select>
+    <option value="/book/115090/" selected>第1-100章</option>
+    <option value="/book/115090/index_1.html">第101-200章</option>
+    <option value="/book/115090/index_2.html">第201-300章</option>
+    </select>
+    """
+    urls = find_series_pages(html, "https://h.test/book/115090/")
+    assert set(urls) == {"https://h.test/book/115090/index_1.html",
+                         "https://h.test/book/115090/index_2.html"}
+
+
+def test_collect_series_pages_orders_dir_root_first():
+    # 目录根页尾号是书号（115090）不得当页号，按页号 0 排最前
+    html = """
+    <select>
+    <option value="/book/115090/">第1-100章</option>
+    <option value="/book/115090/index_1.html">第101-200章</option>
+    <option value="/book/115090/index_2.html" selected>第201-300章</option>
+    <option value="/book/115090/index_3.html">第301-400章</option>
+    </select>
+    """
+    pages = collect_series_pages(html, "https://h.test/book/115090/index_2.html",
+                                 lambda u: html)
+    assert [u for u, _ in pages] == [
+        "https://h.test/book/115090/",
+        "https://h.test/book/115090/index_1.html",
+        "https://h.test/book/115090/index_3.html"]
+
+
+def test_normalize_toc_dup_number_with_random_id_stays_in_place():
+    # 源站自身两个“第176章”（编号笔误）：撞车条目紧跟撞车序号插位，
+    # 不得按随机 URL 尾号排到全书末尾
+    from ebookmaker.models import TocEntry
+    from ebookmaker.sites.base import normalize_toc
+    ents = [TocEntry("/read/9/%d.html" % (170899000 + i), "第%d章 x" % n)
+            for i, n in enumerate((175, 176, 177), start=1)]
+    ents.insert(2, TocEntry("/read/9/170899500.html", "第176章 隐藏阵法"))
+    toc = normalize_toc(ents)
+    assert [e.title for e in toc] == ["第175章 x", "第176章 x",
+                                      "第176章 隐藏阵法", "第177章 x"]
 
 
 def _neighbor_page(n, total):

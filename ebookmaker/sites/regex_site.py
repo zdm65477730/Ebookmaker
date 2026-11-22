@@ -22,6 +22,7 @@
 import os
 import re
 from typing import Dict, List, Optional
+from urllib.parse import urljoin
 
 from .base import (SiteAdapter, anchor_href, clean_author, clean_book_title, container_to_lines,
                    filter_same_host, looks_like_chapter, make_soup,
@@ -98,6 +99,8 @@ class RegexSite(SiteAdapter):
                 for a in anchors:
                     # 优先 href，href 为 javascript: 时回退 onclick 内的 location.href
                     href = anchor_href(a)
+                    if href and urljoin(url, href) == url:
+                        continue   # 指回目录页自身的链接，不是章节
                     title = a.get_text(strip=True)
                     if href and title and not href.startswith("#") \
                             and looks_like_chapter(href, title):

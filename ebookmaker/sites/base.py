@@ -84,8 +84,9 @@ def anchor_href(tag) -> str:
 _CHAPTER_HREF_RE = re.compile(r"\.html?($|[?#])|(?:^|/)\d{3,}(?:/|$|[?#])")
 # 通用导航词标题（分页/目录/开关类），命中即非章节
 _NAV_TITLE_RE = re.compile(
-    r"^(?:上一[页頁]|下一[页頁]|首[页頁]|尾[页頁]|末[页頁]|最新[页頁]|目[录錄]|书[页頁]|"
-    r"返回(?:书页|目录)?|展开|收起|更多|全部|第?\s*\d+\s*[页頁])$")
+    r"^(?:上一[页頁章]|下一[页頁章]|首[页頁]|尾[页頁]|末[页頁]|最新[页頁章]|目[录錄]|书[页頁]|"
+    r"返回(?:书页|目录)?|展开|收起|更多|全部|开始阅读|立即阅读|全文阅读|加入书架|"
+    r"第?\s*\d+\s*[页頁])$")
 
 
 def looks_like_chapter(href: str, title: str) -> bool:
@@ -123,16 +124,40 @@ def find_next_page_url(html: str, cur_url: str) -> Optional[str]:
     return None
 
 
+def _href_dir(href: str) -> str:
+    """章节链接的目录分组键：去掉文件名后的父路径（同级相对链接返回 ""）。
+    仅用于同类链接聚类分组，不做相对路径解析。"""
+    h = (href or "").strip()
+    path = urlparse(h).path or h
+    idx = path.rfind("/")
+    return path[:idx] if idx >= 0 else ""
+
+
 def densest_toc_container(soup):
-    """找 .html 链接最密集的容器，返回 (container, links) 或 (None, [])。"""
-    best, best_cnt = None, 0
+    """找章节列表容器，返回 (container, links) 或 (None, [])。
+
+    以“同目录前缀链接”计数：真实列表容器的链接高度集中于章节目录，
+    纯度（主导目录组占比）≥ 0.9 才可信；混入推书/下载/导航等杂链的
+    外层包装容器直接排除，避免广告链接被计入章节数。返回的链接仅含
+    胜出容器内的主导同目录组。"""
+    best, best_links, best_cnt, best_pure = None, [], 0, 0.0
     for container in soup.find_all(["dl", "ul", "ol", "div"]):
         links = container.find_all("a", href=re.compile(r"\.html?($|[?#])"))
-        if len(links) > best_cnt:
-            best, best_cnt = container, len(links)
-    if best is None or best_cnt < 5:
+        if len(links) < 5:
+            continue
+        groups = {}
+        for a in links:
+            groups.setdefault(_href_dir(a.get("href") or ""), []).append(a)
+        dominant = max(groups.values(), key=len)
+        cnt = len(dominant)
+        purity = float(cnt) / len(links)
+        if cnt < 5 or purity < 0.9:
+            continue
+        if (cnt, purity) > (best_cnt, best_pure):
+            best, best_links, best_cnt, best_pure = container, dominant, cnt, purity
+    if best is None:
         return None, []
-    return best, best.find_all("a", href=re.compile(r"\.html?($|[?#])"))
+    return best, best_links
 
 
 def filter_same_host(entries: List[TocEntry], book_url: str) -> List[TocEntry]:
@@ -201,23 +226,71 @@ def _page_targets(soup) -> List[str]:
     return out
 
 
+def _page_path_key(path: str) -> str:
+    """分页路径归一：剥 .html/.htm 扩展与尾斜杠（index_1.html 与 index_1/ 同页）。"""
+    return re.sub(r"\.html?$", "", path, flags=re.I).rstrip("/")
+
+
 def _page_key(url: str) -> str:
     """分页 URL 归一化键：去尾斜杠与 .html，便于识别同一页的不同写法。"""
     p = urlparse(url)
-    path = re.sub(r"/\.?(html)?/?$", "", p.path).rstrip("/")
-    return "{}{}".format(p.netloc.lower(), path)
+    return "{}{}".format(p.netloc.lower(), _page_path_key(p.path))
+
+
+_SELECT_SUFFIX_RE = re.compile(r"^(.*/[A-Za-z][^/]*)_(\d{1,4})$")
+
+
+def _select_series_pages(soup, cur_url: str, cur_stem: str) -> List[str]:
+    """从 <select> 页码条展开同系列分页 URL。
+
+    文件名式分页（/book/1/index_2.html）的第一页常写作书目录根 /book/1/
+    （无后缀，只出现在 option value 里），后缀正则匹配不到它；只要同一
+    个 select 内出现 ≥2 个“基础名_数字”兄弟项，即认定整条都是分页条，
+    同域其余 option（含目录根/index.html 形态的第一页）一并作为兄弟页。"""
+    cur = urlparse(cur_url)
+    out = []
+    for sel in soup.find_all("select"):
+        suffixed = {}
+        plain = []
+        for o in sel.find_all("option"):
+            v = (o.get("value") or "").strip()
+            if not v or v.lower().startswith(("javascript:", "#")):
+                continue
+            p = urlparse(urljoin(cur_url, v))
+            if p.netloc.lower() != cur.netloc.lower():
+                continue
+            np = _page_path_key(p.path)
+            if np == cur_stem:
+                continue
+            absu = "{}://{}{}".format(p.scheme or cur.scheme, p.netloc, p.path)
+            m = _SELECT_SUFFIX_RE.match(np)
+            if m:
+                suffixed.setdefault(m.group(1), []).append(absu)
+            else:
+                plain.append((np, absu))
+        for prefix, urls in suffixed.items():
+            if len(urls) < 2:
+                continue
+            out.extend(urls)
+            parent = prefix.rsplit("/", 1)[0]
+            for np, u in plain:
+                if np in (parent, parent + "/index"):
+                    out.append(u)
+    return out
 
 
 def find_series_pages(html: str, cur_url: str, max_pages: int = MAX_TOC_PAGES) -> List[str]:
-    """探测同系列目录分页，返回绝对 URL 列表。支持两种形态：
+    """探测同系列目录分页，返回绝对 URL 列表。支持三种形态：
 
-    1) 后缀式兄弟页：/490651_5/ 对应 _1.._N（基础名_数字 fullmatch 守护）；
+    1) 后缀式兄弟页：/490651_5/ 对应 _1.._N（基础名_数字 fullmatch 守护，
+       带 .html 扩展的文件名式分页同样剥离后比较）；
     2) 数字目录式：/xiaoshuo/842/842172/ 的 /1/ /2/ …（base 下一段纯数字+尾斜杠，
-       必须带尾斜杠才不会误把章节文档 /842172/183863035.html 当分页）。
+       必须带尾斜杠才不会误把章节文档 /842172/183863035.html 当分页）；
+    3) <select> 页码条整条归组（含无后缀的第一页，见 _select_series_pages）。
     """
     soup = make_soup(html)
     cur = urlparse(cur_url)
-    stem = re.sub(r"/\.?(html)?/?$", "", cur.path).rstrip("/")
+    stem = _page_path_key(cur.path)
     base = re.sub(r"_\d+$", "", stem)
     # 当前页自身就是数字目录页（/base/N/）：兄弟页必属同系列，直接剥页号求 base
     # （lxml 会去掉属性 URL 的尾斜杠，两种形态都认）
@@ -235,7 +308,7 @@ def find_series_pages(html: str, cur_url: str, max_pages: int = MAX_TOC_PAGES) -
         p = urlparse(absu)
         if p.netloc.lower() != cur.netloc.lower():
             continue
-        ppath = re.sub(r"/\.?(html)?/?$", "", p.path).rstrip("/")
+        ppath = _page_path_key(p.path)
         if pattern.fullmatch(ppath) and ppath != stem:
             found.add("{}://{}{}".format(p.scheme or cur.scheme, p.netloc, p.path))
             continue
@@ -247,6 +320,8 @@ def find_series_pages(html: str, cur_url: str, max_pages: int = MAX_TOC_PAGES) -
         if self_dir or NUM_LABEL_RE.match(label or "") or re.search(r"全部章节|章节目录", label or ""):
             found.add("{}://{}{}".format(p.scheme or cur.scheme, p.netloc,
                                          p.path if p.path.endswith("/") else p.path + "/"))
+    for u in _select_series_pages(soup, cur_url, stem):
+        found.add(u)
     return sorted(found)[:max_pages]
 
 
@@ -289,7 +364,7 @@ def _page_number(url: str) -> int:
     m = re.search(r"_(\d+)(?:[/.]|$)", urlparse(url).path)
     if m:
         return int(m.group(1))
-    m = re.search(r"/(\d+)/$", urlparse(url).path)   # 数字目录式 /base/12/
+    m = re.search(r"/(\d{1,4})/$", urlparse(url).path)   # 数字目录式 /base/12/（长数字是书号非页号）
     return int(m.group(1)) if m else 0
 
 
@@ -392,8 +467,10 @@ def normalize_toc(entries: List[TocEntry]) -> List[TocEntry]:
     - 首选“标题序号==URL尾号”的条目（两证据互证，最可信）占位；
     - 其余按标题序号（缺失回退 URL 尾号）顺序占位，同序号先到先得（站点
       “最新章节”模块跨页重复即此路径消除）；
-    - 撞车条目若其 URL 尾号尚无人占用，则按尾号补位——源站个别章节
-      标题笔误（如 336.html 标题误写“第366章”）时不再掉真章。
+    - 撞车条目若其 URL 尾号尚无人占用且像章号（<100000），则按尾号补位
+      ——源站个别章节标题笔误（如 336.html 标题误写“第366章”）时不再掉
+      真章；尾号是随机文档 ID 时改为紧跟撞车序号插位，避免按天文数字
+      排序把章节甩到全书末尾。
     - 若绝大多数条目有序号（≥ 80%），则丢弃无序号条目（通常是其他书侧栏推荐）。
     """
     assigned: dict = {}          # num -> (order, entry)
@@ -419,8 +496,15 @@ def normalize_toc(entries: List[TocEntry]) -> List[TocEntry]:
         ci, ce = assigned[num]
         if ce.href == e.href:
             continue               # href 完全相同 => 同章重复展示（最新章节模块），丢
-        if unum is not None and unum not in assigned:
+        if unum is not None and unum not in assigned and unum < 100000:
             assigned[unum] = (i, e)   # 标题序号被占：按 URL 尾号补位（源站标题笔误）
+            rescued += 1
+        elif unum is not None:
+            # 尾号是随机文档 ID（≥100000）或已被占：紧跟撞车序号插位
+            key = float(num) + 0.5
+            while key in assigned:
+                key += 0.5
+            assigned[key] = (i, e)
             rescued += 1
     if rescued:
         log.info("目录中 %d 个条目标题序号与 URL 尾号不符，已按尾号补位（源站笔误救援）",
@@ -491,17 +575,22 @@ class SiteAdapter(ABC):
                 continue
             entries.append(TocEntry(href=href, title=title))
         if not entries:
-            entries = self._fallback_toc(soup)
+            entries = self._fallback_toc(soup, url)
         return normalize_toc(filter_same_host(entries, url))
 
     @staticmethod
-    def _fallback_toc(soup) -> List[TocEntry]:
-        """兜底：找到 .html 链接最密集的容器（参考 espc/novel-downloader 做法）。"""
+    def _fallback_toc(soup, url: str = "") -> List[TocEntry]:
+        """兜底：取最密集且同目录纯净的章节列表容器（参考 espc/novel-downloader 做法）。
+
+        部分站点的列表容器里混有指回目录页自身的链接，URL 与目录页完全
+        相同的条目直接丢弃，否则会被当成“第1章”挤掉真章节。"""
         _, links = densest_toc_container(soup)
         entries = []
         for a in links:
             href = anchor_href(a)
             title = a.get_text(strip=True)
+            if href and url and urljoin(url, href) == url:
+                continue
             if href and title and looks_like_chapter(href, title):
                 entries.append(TocEntry(href=href, title=title))
         return entries
