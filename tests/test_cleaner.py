@@ -111,6 +111,21 @@ def test_replace_rule_chapter_scoped():
     assert c.clean_paragraphs(["测试甲"], chapter_index=4) == ["测试甲"]
 
 
+def test_watermark_and_promo_lines():
+    c = Cleaner(CleanerConfig())
+    # 交替型水印：不能只去符号留下站点名“领域文学”
+    out = c.clean_paragraphs(["♂领♂域♂文♂学♂*♂♂ng♂♂g", "正文一句。"], title="x")
+    assert out == ["正文一句。"]
+    # 真实残留形态（武神主宰 ch3280/4865）
+    out2 = c.clean_paragraphs(
+        ["秦尘微微一笑。", "更多精彩尽在138du。", "ins/ins", "转身就走。"],
+        title="x")
+    assert out2 == ["秦尘微微一笑。", "转身就走。"]
+    # 不误伤：含“更多”字样的正常叙事、少量单个装饰符号的句子不被整行删
+    assert c.clean_paragraphs(["他想要更多，更多力量。"], title="x") == ["他想要更多，更多力量。"]
+    assert c.clean_paragraphs(["☆新星升起。"], title="x")[0].startswith("新星")
+
+
 def test_paren_pinyin_keeps_hanzi():
     # 真实形态（武神主宰/bqg2 第一章）：“七大(禁jin)地”必须洗成“七大禁地”，
     # 括号里的汉字是正文必要内容，只能去拼音和括号

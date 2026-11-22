@@ -58,6 +58,8 @@ AD_LINE_PATTERNS = [re.compile(p, re.I) for p in (
     r"^(?:本\s*[页章节]?\s*(?:已)?完[成全]|本章结束|全文完|正文完|待续未完)[！!。\s]*$",
     r"(加载中|请稍候|请稍等|please wait|loading)",
     r"(喜欢|如果觉得|如果阅读).{0,25}(的话|吗).{0,25}(请|记得|收藏|分享|推荐)",
+    r"更多精彩|更多惊喜|精彩继续|更多好看",
+    r"^\w{1,12}[/｜|]\w{1,12}$",                       # 纯斜杠分隔垃圾行（ins/ins）
     r"（.{0,12}(小说|网站|域名|地址).{0,12}）$",
     r"translat|service generated|copyright",
     r"^[0-9\s\-—=:;,.!?,.，。、！；：]+$",          # 纯符号/数字分割线
@@ -306,6 +308,10 @@ class Cleaner:
         text = self._restore_font(text)          # 先还原加密字体码位
         text = NBSP_RE.sub(" ", text)
         text = _strip_paren_pinyin(text)
+        # 水印符号达 3 个的行整行删（如“♂领♂域♂文♂学♂”交替型：只去符号会把
+        # 站点名文字留在正文里；叙事正文不会连用多个此类符号）
+        if sum(text.count(s) for s in "♂♀★◎☆") >= 3:
+            return ""
         text = NOISE_SYMBOL_RE.sub("", text)
         text = re.sub(r"[ \t]+", " ", text).strip()
         if not text:
