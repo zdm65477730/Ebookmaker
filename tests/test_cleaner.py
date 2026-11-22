@@ -111,6 +111,27 @@ def test_replace_rule_chapter_scoped():
     assert c.clean_paragraphs(["测试甲"], chapter_index=4) == ["测试甲"]
 
 
+def test_sticky_title_prefix():
+    # 真实形态（武神主宰 ch226/238）：源站标题行后无换行，标题与正文首句粘连同段
+    c = Cleaner(CleanerConfig())
+    out = c.clean_paragraphs(
+        ["第226章阻拦这突如其来的一幕，令得所有人都大惊。", "“所有人都退后。”"],
+        title="第226章 阻拦")
+    assert out == ["这突如其来的一幕，令得所有人都大惊。", "“所有人都退后。”"]
+    out2 = c.clean_paragraphs(["第238章一个耳光张斐脸色，陡然一变。"], title="第238章 一个耳光")
+    assert out2 == ["张斐脸色，陡然一变。"]
+    # 不误伤：正文叙事恰好以相似字开头但非标题键完全匹配
+    keep = ["第226章的阻拦来得及时，众人惊魂未定。"]
+    assert c.clean_paragraphs(keep, title="第226章 阻拦") == keep
+    # 源站标题章号笔误（ch244 真实形态）：正文页“第2章封杀”，目录“第244章 封杀”
+    out3 = c.clean_paragraphs(["第2章封杀秦奋知道，秦尘连大哥都能打伤。"],
+                              title="第244章 封杀")
+    assert out3 == ["秦奋知道，秦尘连大哥都能打伤。"]
+    # 单字章名不走宽松路径（防误剥“杀死…”叙事段）
+    keep2 = ["第9章杀死那个叛徒。"]
+    assert c.clean_paragraphs(keep2, title="第4章 杀")[0] == keep2[0]
+
+
 def test_watermark_and_promo_lines():
     c = Cleaner(CleanerConfig())
     # 交替型水印：不能只去符号留下站点名“领域文学”

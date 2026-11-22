@@ -127,6 +127,7 @@ def test_good_chapter_saved_with_high_confidence(tmp_path):
 
 def test_agreement_returned_by_extract(tmp_path):
     crawler, _ = _make(tmp_path, OnePageHttp(_html_in(LONG_PROSE)))
-    lines, agree = crawler._extract_full_chapter(
+    lines, agree, notes = crawler._extract_full_chapter(
         _html_in(LONG_PROSE), "https://x.b/1.html", "https://x.b/", title="第1章")
     assert lines and 0.0 <= agree <= 1.0
+    assert isinstance(notes, list)

@@ -11,11 +11,31 @@
 
 import re
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Optional, Sequence, Set, Tuple
 
 from .config import CleanerConfig
 from .log import get_logger
+
+# 页级全文审查报告（统计/结构信号，行业通用 content-QA 度量集）
+@dataclass
+class PageReview:
+    n_lines: int = 0
+    n_chars: int = 0
+    cjk_ratio: float = 0.0        # 中日韩文字占比
+    punct_ratio: float = 0.0      # 句末标点密度
+    watermark_hits: int = 0       # 水印符号总数
+    pinyin_hits: int = 0          # 拼音乱码括号数
+    pua_hits: int = 0             # 未还原 PUA 码位数
+    ad_hits: int = 0              # 命中广告模式的行数
+    url_hits: int = 0             # 含 URL/域名行
+    navlist_hits: int = 0         # 导航列表行
+    title_hits: int = 0           # 重复章名行
+    dup_line_ratio: float = 0.0   # 页内行重复率
+    noise_ratio: float = 0.0      # 噪声行字数占比
+    severe: bool = False          # 需激进清洗/压低置信
+    findings: list = field(default_factory=list)
+
 
 log = get_logger(__name__)
 
@@ -140,6 +160,76 @@ class Cleaner:
     def _restore_font(self, text: str) -> str:
         return text.translate(self._font_table) if self._font_table else text
 
+    # ---------- 页级全文审查（行业标准的内容质量预审，非站点规则） ----------
+    def review_page(self, raw_lines: Sequence[str], title: str = "") -> "PageReview":
+        """对单页全文做多信号审查：字符分布/水印密度/拼音乱码/广告命中/
+        行内重复率/噪声占比等统计与结构信号 → 给出 findings 与 severe 判定。
+
+        用途：①清洗前预审（severe 时自动启用更激进的块清除）；②清洗后复审
+        （仍 severe 则记入章节 problems 并压低置信度，驱动补抓）。
+        只读不写，无任何站点特定假设。"""
+        from collections import Counter
+        lines = [t for t in (self._pre_clean_line(x, None, keep_page_markers=True,
+                                                  keep_ad_lines=True)
+                             for x in raw_lines) if t]
+        text = "".join(lines)
+        raw_text = "".join(raw_lines)
+        r = PageReview(n_lines=len(lines), n_chars=len(text))
+        if not text:
+            r.severe = True
+            r.findings.append("空白页")
+            return r
+        r.cjk_ratio = len(re.findall(r"[\u4e00-\u9fff]", text)) / len(text)
+        r.punct_ratio = len(re.findall(r"[。！？…]", text)) / len(text)
+        # 水印/拼音/PUA 必须在**原始文本**上统计：预清洗已把它们剥除，
+        # 在清洗后文本上只会得到 0，审查就形同虚设
+        r.pua_hits = len(PUA_RE.findall(raw_text))
+        r.watermark_hits = sum(raw_text.count(s) for s in "♂♀★◎☆")
+        r.pinyin_hits = (len(_PINYIN_ANNO_RE.findall(raw_text))
+                         + len(_PURE_PINYIN_RE.findall(raw_text)))
+        norm_title = self._normalize(title) if title else ""
+        noise_chars = 0
+        for l in lines:
+            is_noise = False
+            if any(pat.search(l) for pat in self.ad_patterns):
+                r.ad_hits += 1
+                is_noise = True
+            if URL_RE.search(l):
+                r.url_hits += 1
+                is_noise = True
+            if self._is_navlist(l):
+                r.navlist_hits += 1
+                is_noise = True
+            if norm_title and self._is_title_line(l, norm_title):
+                r.title_hits += 1
+                is_noise = True
+            if sum(l.count(s) for s in "♂♀★◎☆") >= 3:
+                is_noise = True
+            if is_noise:
+                noise_chars += len(l)
+        r.noise_ratio = noise_chars / max(1, len(text))
+        cnt = Counter(lines)
+        r.dup_line_ratio = (len(lines) - len(cnt)) / len(lines)
+        # 判定：硬信号任一命中即 severe（需激进清洗/压低置信）
+        if r.watermark_hits >= 6:
+            r.findings.append("符号水印")
+        if r.pinyin_hits >= 8:
+            r.findings.append("拼音乱码")
+        if r.navlist_hits:
+            r.findings.append("导航列表混入")
+        if r.ad_hits >= 3:
+            r.findings.append("广告行")
+        if r.url_hits >= 2:
+            r.findings.append("URL行")
+        if r.dup_line_ratio > 0.4 and len(lines) >= 6:
+            r.findings.append("页内行重复")
+        if r.noise_ratio > 0.25:
+            r.findings.append("噪声占比高")
+        if r.pua_hits and r.pua_hits / max(1, len(text)) > 0.02:
+            r.findings.append("PUA残留")
+        r.severe = bool(r.findings)
+        return r
+
     # ---------- 阶段 1-4：单章清洗 ----------
     # 标题分隔符等价类：冒号/空格/间隔号等书写差异（“第1章：重生” vs “第1章 重生”）
     _TITLE_SEP_RE = re.compile(r"[\s：:、，,·・．.\-—_~～]+")
@@ -204,8 +294,53 @@ class Cleaner:
             # 正文里重复出现的本章标题行（旧 bageoo 配置“第N章 ”剔除规则的通用化）
             if self._is_title_line(text, norm_title):
                 continue
+            text = self._strip_title_prefix(text, norm_title)
             lines.append(text)
         return lines
+
+    @classmethod
+    def _strip_title_prefix(cls, para: str, norm_title: str) -> str:
+        """标题与正文首句粘连同段时剥标题前缀（源站标题行后无换行）：
+        “第226章阻拦这突如其来的一幕…”→“这突如其来的一幕…”。
+        仅对“粘连形态”生效：标题字符区内不得出现分隔符（真实粘连写紧
+        “第226章阻拦”，正常排版的叙事句“第1章 重生是…”标题区含空格，
+        不剥），且完全匹配、剩余非空才剥。"""
+        key = cls._title_key(norm_title)
+        if len(key) < 4 or not para:
+            return para
+        ki = 0
+        for i, ch in enumerate(para):
+            if cls._TITLE_SEP_RE.fullmatch(ch):
+                if ki > 0:      # 标题字符区内部出现分隔符 → 非粘连形态，不剥
+                    return para
+                continue
+            if ch == key[ki]:
+                ki += 1
+                if ki == len(key):
+                    rest = para[i + 1:].strip()
+                    return rest if rest else para
+                continue
+            break
+        # 宽松路径：源站正文页标题章号可能笔误（“第2章封杀”实为第244章），
+        # 但章名部分（≥2字，防单字章名误剥“杀死…”类叙事段）紧跟段首章号时仍剥
+        m = re.match(r"^第\s*\d+\s*[章节回]", para)
+        name_key = re.sub(r"^第\s*\d+\s*[章节回]", "", key)
+        if m and len(name_key) >= 2:
+            i, ki = m.end(), 0
+            while i < len(para) and ki < len(name_key):
+                if cls._TITLE_SEP_RE.fullmatch(para[i]) and ki == 0:
+                    i += 1
+                    continue
+                if para[i] == name_key[ki]:
+                    ki += 1
+                    i += 1
+                else:
+                    break
+            if ki == len(name_key):
+                rest = para[i:].strip()
+                if rest:
+                    return rest
+        return para
 
     def clean_paragraphs(self, raw_lines: Sequence[str], chapter_index: int = 0,
                          junk_lines: Optional[Set[str]] = None,
@@ -256,8 +391,12 @@ class Cleaner:
         return any(p.search(core) for p in cls.PAGE_END_RES[1:])
 
     def clean_page(self, raw_lines: Sequence[str], title: str = "",
-                   junk_lines: Optional[Set[str]] = None) -> Tuple[List[str], bool]:
+                   junk_lines: Optional[Set[str]] = None,
+                   aggressive: Optional[bool] = None) -> Tuple[List[str], bool]:
         """清洗“单页”正文并定位页尾，返回 (正文段落, 是否还有下一页)。
+
+        审查驱动：aggressive=None 时先对本页做全文预审（review_page），
+        severe 页自动启用更激进的块清除阈值；调用方也可显式指定。
 
         三重锚定：
         1) 起始锚：首个“等于本章标题（含分页后缀）”的预清洗行之前全部丢弃
@@ -270,6 +409,9 @@ class Cleaner:
            超过阈值而漏删。
         """
         lines = self._locate_start(raw_lines, title)
+        if aggressive is None:
+            # 清洗前全文预审：severe 页自动启用激进块清除
+            aggressive = self.review_page(raw_lines, title).severe
         # 预清洗但保留页尾标记行（……结尾）参与行锚扫描；扫描完成后再剔除
         # 检测末页指示符：“(第N/M页)” 且 N==M → 这是最后一页，无需再续
         _this_is_last = False
@@ -300,10 +442,13 @@ class Cleaner:
             final = self._finalize_line(line)
             if final:
                 out.append(final)
-        return self._drop_list_blocks(out), needs_next
+        return self._drop_list_blocks(out, aggressive), needs_next
 
     def _pre_clean_line(self, line: str, junk_lines: Optional[Set[str]],
-                        keep_page_markers: bool = False) -> str:
+                        keep_page_markers: bool = False,
+                        keep_ad_lines: bool = False) -> str:
+        """字符级预清洗。keep_ad_lines=True 时跳过所有行级删除判定（广告/
+        junk/水印行/标题行）——供页级审查在未被过滤的文本上统计噪声。"""
         text = CONTROL_RE.sub("", ZERO_WIDTH_RE.sub("", line))
         text = self._restore_font(text)          # 先还原加密字体码位
         text = NBSP_RE.sub(" ", text)
@@ -315,6 +460,12 @@ class Cleaner:
         text = NOISE_SYMBOL_RE.sub("", text)
         text = re.sub(r"[ \t]+", " ", text).strip()
         if not text:
+            return ""
+        if keep_ad_lines:
+            return text
+        # 水印符号达 3 个的行整行删（如“♂领♂域♂文♂学♂”交替型：只去符号会把
+        # 站点名文字留在正文里；叙事正文不会连用多个此类符号）
+        if sum(text.count(s) for s in "♂♀★◎☆") >= 3:
             return ""
         # 静态广告行
         for pat in self.ad_patterns:
@@ -353,16 +504,19 @@ class Cleaner:
     def _is_navlist(line: str) -> bool:
         return len(NAV_MARKER_RE.findall(line)) >= 3
 
-    def _drop_list_blocks(self, lines: Sequence[str]) -> List[str]:
+    def _drop_list_blocks(self, lines: Sequence[str],
+                          aggressive: bool = False) -> List[str]:
         """丢弃结构性切块（与站点无关的通用启发）：
 
         1) 导航列表行：单行内含 ≥3 个“第N章”标记（侧边章节列表被当正文）。
-        2) 推荐/书友块：连续 ≥junk_block_run 段、每段≤junk_title_max_len 且不含句号，
+        2) 推荐/书友块：连续 ≥run_min 段、每段≤junk_title_max_len 且不含句号，
            这种“连续短句无句号”的长条不可能是叙事正文（叙事段落通常带句号且较长）。
+        3) aggressive（页审 severe 时）：块清除阈值减半——预审已证实页面噪声
+           密度异常，短句连块更可能是挂件而非叙事，宁严勿松。
         """
         short_max = self.cfg.junk_title_max_len
-        run_min = 8
-        tail_run_min = 4   # 章节末尾的推荐位（高频法删剩的轮换书名）用更低阈值
+        run_min = 5 if aggressive else 8
+        tail_run_min = 3 if aggressive else 4   # 章节末尾的推荐位用更低阈值
         kept: List[str] = []
         i, n = 0, len(lines)
         while i < n:

@@ -436,7 +436,8 @@ class Crawler:
             log.warning("章节抓取失败 [%d] %s: %s", index, entry.title, e)
             self._bump()
             return False
-        raw_lines, agree = self._extract_full_chapter(html, ch_url, book_url, title=entry.title)
+        raw_lines, agree, notes = self._extract_full_chapter(
+            html, ch_url, book_url, title=entry.title)
         # 真正的封禁/改版信号：HTTP 200 但抽不出正文（验证码长页几乎不存在，
         # 而正文抽取为空一定是异常）——此时才对域名冷却并排入补爬
         if not raw_lines or sum(len(l) for l in raw_lines) < 30:
@@ -454,6 +455,12 @@ class Crawler:
         status, problems = self.cleaner.check_quality(paragraphs)
         conf, cproblems = self.cleaner.chapter_confidence(paragraphs, title=entry.title)
         problems = problems + [p for p in cproblems if p not in problems]
+        # 页级复审残留噪声：封顶临界值以下，驱动补抓重试
+        for n in notes:
+            if n not in problems:
+                problems.append(n)
+        if notes:
+            conf = min(conf, 0.45)
         # 双抽取器分歧计入置信度（只罚不奖）
         if agree < 0.5:
             conf = min(conf, 0.45)
@@ -481,13 +488,15 @@ class Crawler:
             self.progress.bump()
 
     def _extract_full_chapter(self, html: str, ch_url: str, book_url: str,
-                              title: str = "") -> Tuple[List[str], float]:
-        """抽取完整章节：逐页定位清洗后拼接，返回 (正文行, 双抽取器一致度 0~1)。
+                              title: str = "") -> Tuple[List[str], float, List[str]]:
+        """抽取完整章节：逐页定位清洗后拼接，返回 (正文行, 双抽取器一致度, 页审备注)。
 
-        分页发现：序列探针优先 + 同系列链接探测回退（见 mobipatch 注释历史）；
+        分页发现：序列探针优先 + 同系列链接探测回退；
         一致度 = min(站点路径字数, trafilatura 标尺字数)/max(...)，每页取平均；
-        标尺不可用（未装/空白）时记 1.0（中性），只惩罚分歧、不奖励一致。"""
+        标尺不可用（未装/空白）时记 1.0（中性），只惩罚分歧、不奖励一致；
+        页审备注 = 清洗后复审仍 severe 的页 findings（驱动置信闸门与补抓）。"""
         lines: List[str] = []
+        notes: List[str] = []
         visited = {ch_url}
         max_pages = max(1, self.cfg.fetch.max_next_pages)
         page_html, page_url = html, ch_url
@@ -518,6 +527,10 @@ class Crawler:
                 if lines:
                     break
             else:
+                # 清洗后复审：仍有结构性噪声的页记入页审备注（驱动补抓）
+                post = self.cleaner.review_page(more, title)
+                if post.severe:
+                    notes.append("复审残留: %s" % ";".join(post.findings[:3]))
                 # 重复守护（行级精确匹配 + 2-gram 覆盖双重）：
                 # 软404 重复页侧栏变化会稀释行级匹配率，2-gram 覆盖能补捕
                 tail_set = set(lines[-50:])
@@ -574,7 +587,7 @@ class Crawler:
                 nxt = link
             page_url = nxt
         agree = (agree_sum / agree_n) if agree_n else 1.0
-        return lines, agree
+        return lines, agree, notes
 
     def _page_belongs(self, page_html: str, page_url: str, title: str) -> bool:
         """探针候选页归属校验（不强求续页重复章名，真实站只在首页带标题）：

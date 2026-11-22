@@ -18,8 +18,10 @@ SENTS = ("他想起那年的雨夜，长安街上的灯火一盏盏熄灭，唯�
 
 
 def prose(n_paragraphs: int) -> list:
-    """生成 n 段正常叙事正文（带句号、无广告形态）。"""
-    return [SENTS * 3 for _ in range(n_paragraphs)]
+    """生成 n 段互不相同的正常叙事正文（带句号、无广告形态；同段重复会
+    触发页级审查的“页内行重复”信号，不符合真实正文形态）。"""
+    return ["他想起那年的雨夜，长安街上的灯火一盏盏熄灭，唯有城头的风还在呜咽。"
+            "第%d段，街角的灯下站着个熟悉的身影。" % k for k in range(n_paragraphs)]
 
 
 class Resp:
