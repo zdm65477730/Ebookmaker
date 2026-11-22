@@ -76,3 +76,75 @@ def test_log_book_info_output(caplog):
     assert "简介：" in text
     # 简介截断到 160 字符 + 省略号
     assert "简" * 161 not in text
+
+
+# ---------- 跨源封面兜底 ----------
+class _Resp:
+    def __init__(self, text="", content=b"", content_type="image/jpeg"):
+        self.text, self.content, self.content_type = text, content, content_type
+
+
+class _CoverHttp:
+    """书页带 og:image，图片 URL 返回固定字节。"""
+    PAGE = ('<html><head><meta property="og:image" content="/c.jpg">'
+            '</head><body></body></html>')
+
+    def get(self, url, **kw):
+        if url.endswith(".jpg"):
+            return _Resp(content=b"IMGDATA")
+        return _Resp(text=self.PAGE)
+
+
+def test_cover_from_other_sources(tmp_path):
+    # 主源无封面：从书目索引登记的同书其他源拿到封面
+    from ebookmaker import bookindex
+    from ebookmaker.config import AppConfig
+    from ebookmaker.models import BookMeta
+    cfg = AppConfig()
+    cfg.workdir = str(tmp_path)
+    store = BookStore(str(tmp_path / "书"))
+    meta = BookMeta(title="测试书", source_url="https://a.site/b/1/")
+    store.save_meta(meta)
+    bookindex.record(cfg.workdir, "测试书", "https://b.site/nov/9/", [])
+    cli._cover_from_other_sources(cfg, store, _CoverHttp(), meta,
+                                  meta.source_url, [], [])
+    p = store.cover_path()
+    assert p and open(p, "rb").read() == b"IMGDATA"
+
+
+def test_build_backfills_missing_cover(tmp_path, monkeypatch):
+    # clean 清掉封面后单独 build：先主源再其他源回补，不阻塞出书
+    from ebookmaker import bookindex
+    from ebookmaker.config import AppConfig
+    from ebookmaker.models import BookMeta
+    cfg = AppConfig()
+    cfg.workdir = str(tmp_path)
+    store = BookStore(str(tmp_path / "书"))
+    meta = BookMeta(title="测试书", source_url="https://a.site/b/1/")
+    store.save_meta(meta)
+    bookindex.record(cfg.workdir, "测试书", "https://b.site/nov/9/", [])
+    monkeypatch.setattr(cli, "_make_limiter", lambda cfg: None)
+    monkeypatch.setattr(cli, "_wire_runtime", lambda cfg, lim: (None, _CoverHttp()))
+    monkeypatch.setattr(cli, "build_epub", lambda s, p, c: None)
+    assert cli.cmd_build(cfg, store, ["epub"]) == 0
+    assert store.cover_path()
+
+
+def test_build_cover_backfill_failure_not_blocking(tmp_path, monkeypatch):
+    # 离线/无其他源：回补失败照常出书，不抛异常
+    from ebookmaker.config import AppConfig
+    from ebookmaker.models import BookMeta
+    cfg = AppConfig()
+    cfg.workdir = str(tmp_path)
+    store = BookStore(str(tmp_path / "书"))
+    store.save_meta(BookMeta(title="测试书", source_url="https://a.site/b/1/"))
+
+    class _DeadHttp:
+        def get(self, url, **kw):
+            raise RuntimeError("no network")
+
+    monkeypatch.setattr(cli, "_make_limiter", lambda cfg: None)
+    monkeypatch.setattr(cli, "_wire_runtime", lambda cfg, lim: (None, _DeadHttp()))
+    monkeypatch.setattr(cli, "build_epub", lambda s, p, c: None)
+    assert cli.cmd_build(cfg, store, ["epub"]) == 0
+    assert store.cover_path() is None

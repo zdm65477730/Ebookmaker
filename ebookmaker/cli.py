@@ -340,7 +340,7 @@ def cmd_verify(cfg: AppConfig, book_dir: str, url: str = "", samples: int = 5) -
     for i, ps in sorted(chap_paras.items()):
         if not ps:
             continue
-        if any(len(CHAPTER_TITLE_RE.findall(p)) >= 3 for p in ps):
+        if any(Cleaner._is_navlist(p) for p in ps):   # 章节导航连缀/顿号书名推荐行
             nav_bad.append(i)
         run = 0
         for p in reversed(ps):     # 只统计章尾连续短行（与 cleaner 尾块规则同口径，
@@ -453,6 +453,18 @@ def cmd_build(cfg: AppConfig, store: BookStore, formats: List[str]) -> int:
         # 学习规则文件可能已被清理，退回 host 匹配/generic
         site = get_adapter(meta.source_url or "", "", extra_rules_dirs=extra)
     cleaner = _make_cleaner(cfg, store.load_font_map())
+    # 封面回补：clean 清掉中间产物后单独 build，或当年爬取时所有源都无封面，
+    # 此处按“主源 → 书目索引其他源”再试一次（增益路径，失败不阻塞出书）
+    if not store.cover_path() and (meta.source_url or "").startswith("http"):
+        try:
+            _proxy, http = _wire_runtime(cfg, _make_limiter(cfg))
+            if meta.cover_url:
+                _fetch_cover(store, http, meta, meta.source_url)
+            if not store.cover_path():
+                _cover_from_other_sources(cfg, store, http, meta,
+                                          meta.source_url, [], extra)
+        except Exception as e:  # noqa: BLE001 - 无网/离线环境回补失败照常出书
+            log.debug("build 封面回补失败（不阻塞）: %s", e)
     out_dir = os.path.dirname(store.root)
     epub_path = os.path.join(out_dir, safe_dirname(meta.title) + ".epub")
     build_epub(store, epub_path, cleaner)

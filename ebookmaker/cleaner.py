@@ -76,7 +76,8 @@ AD_LINE_PATTERNS = [re.compile(p, re.I) for p in (
     r"(请?收藏|记住|首发|最新更新|最快更新).{0,30}(小说|网址|地址|域名)",
     r"(笔趣?阁|顶点小说|八一?小说|书海阁|69书吧|妙笔阁|oku|书旗|起点|横店|嘉年华).{0,20}(小说|无弹窗|无弹窗|提醒您|首发)",
     r"(本章未完|点击下一页|下一章自己找|请返回|章节目录|加入书签|章节错误|报错|举报)",
-    r"^上?下一[页章]\s*[目书]?[录籍]?\s*$",
+    r"^[上下]一[页頁章](?:\s*[目书][录籍])?\s*$",   # 上一章/下一章/上一页/下一页（旧正则 上?下一 只命中“下X”，上字头漏网）
+    r"^[^。！？]{0,14}(推荐阅读|热门推荐|相关推荐|猜你喜欢|书友.{0,8}看|大家在看)[：:]",
     r"^(?:本\s*[页章节]?\s*(?:已)?完[成全]|本章结束|全文完|正文完|待续未完)[！!。\s]*$",
     r"(加载中|请稍候|请稍等|please wait|loading)",
     r"(喜欢|如果觉得|如果阅读).{0,25}(的话|吗).{0,25}(请|记得|收藏|分享|推荐)",
@@ -521,8 +522,19 @@ class Cleaner:
         return text
 
     @staticmethod
-    def _is_navlist(line: str) -> bool:
-        return len(NAV_MARKER_RE.findall(line)) >= 3
+    def _is_dun_list(line: str) -> bool:
+        """顿号连缀行（“推荐阅读：书名A、书名B、…”挂件形态）：≥5 个短条目
+        用顿号连缀且全行无任何句读标点。叙事行几乎必然带句读；即便无句读，
+        连缀 ≥5 个 ≤15 字短顿号项也不是行文习惯。"""
+        if re.search(r"[。！？!?…〜~]", line):
+            return False
+        parts = [p for p in line.split("、") if p.strip()]
+        return len(parts) >= 5 and max(len(p) for p in parts) <= 15
+
+    @classmethod
+    def _is_navlist(cls, line: str) -> bool:
+        """挂件列表行：连缀多个“第N章”的章节导航行，或顿号连缀的书名推荐行。"""
+        return len(NAV_MARKER_RE.findall(line)) >= 3 or cls._is_dun_list(line)
 
     def _drop_list_blocks(self, lines: Sequence[str],
                           aggressive: bool = False) -> List[str]:

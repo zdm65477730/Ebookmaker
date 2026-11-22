@@ -147,6 +147,26 @@ def test_watermark_and_promo_lines():
     assert c.clean_paragraphs(["☆新星升起。"], title="x")[0].startswith("新星")
 
 
+def test_dun_list_and_nav_button_lines():
+    # 真实形态（mxgbq.cc）：首段顿号连缀书名推荐行 + 章尾“上一章”按钮
+    c = Cleaner(CleanerConfig())
+    noise = ["推荐阅读：至尊神魔、权路迷局、直死无限、古董商的寻宝之旅、"
+             "天域苍穹、超级吞噬系统、圣墟、男人不低头、美女总裁的贴身狂少、灵武帝尊",
+             "上一章", "正文结束。"]
+    out = c.clean_paragraphs(noise, title="第1章 开端")
+    assert out == ["正文结束。"]
+    # 上一/下一 双向按钮均命中（旧正则只命中“下X”）
+    for l in ("上一章", "下一章", "上一页", "下一页"):
+        assert c._finalize_line(l) == "", l
+    # 不误伤：带句读的顿号叙事行、少量顿号项的句子均保留
+    keep = ["这一路，有笑、有泪、有遗憾、有不甘、有重逢。",
+            "他买了苹果、香蕉和橙。"]
+    assert c.clean_paragraphs(keep, title="x") == keep
+    # 无句读但连缀 ≥5 短顿号项的书名形态（频率法覆盖不到）走块清除
+    assert Cleaner._is_dun_list("热点推文：甲乙、丙丁、戊己、庚辛、壬癸、子丑")
+    assert not Cleaner._is_dun_list("甲、乙、丙、丁、戊己庚辛壬癸子丑寅卯辰巳午未申酉戌")  # 单项超 15 字
+
+
 def test_paren_pinyin_keeps_hanzi():
     # 真实形态（武神主宰/bqg2 第一章）：“七大(禁jin)地”必须洗成“七大禁地”，
     # 括号里的汉字是正文必要内容，只能去拼音和括号
