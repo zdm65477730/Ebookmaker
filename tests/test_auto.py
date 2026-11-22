@@ -184,3 +184,8 @@ def test_learner_prefers_true_content_over_shell():
     d = learn_site(ShellTrapHttp(), BOOK_URL, toc, Cleaner(CleanerConfig()), cfg)
     assert d is not None
     assert d["content"]["selector"] == "#content"
+    # 基准校验证据随描述符落盘（可追溯：用了什么标尺、一致度、噪声页数）
+    v = d.get("validation", {})
+    assert v.get("oracle") == "trafilatura"
+    assert 0.0 <= v.get("agreement", 0) <= 1.0
+    assert v.get("samples", 0) >= 0

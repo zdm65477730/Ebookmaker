@@ -33,6 +33,8 @@ class PageReview:
     title_hits: int = 0           # 重复章名行
     dup_line_ratio: float = 0.0   # 页内行重复率
     noise_ratio: float = 0.0      # 噪声行字数占比
+    short_run: int = 0            # 最长连续短行无句号 run（推荐块形态）
+    gram_uniq: float = 1.0        # 3-gram 去重率（套话复读会骤降）
     severe: bool = False          # 需激进清洗/压低置信
     findings: list = field(default_factory=list)
 
@@ -210,6 +212,20 @@ class Cleaner:
         r.noise_ratio = noise_chars / max(1, len(text))
         cnt = Counter(lines)
         r.dup_line_ratio = (len(lines) - len(cnt)) / len(lines)
+        # 最长连续“短行且无句号”run：推荐/书名块的形态特征
+        run = 0
+        for l in lines:
+            if len(l) <= self.cfg.junk_title_max_len and \
+                    not re.search(r"[。！？…]", l):
+                run += 1
+                r.short_run = max(r.short_run, run)
+            else:
+                run = 0
+        # 3-gram 去重率（boilerplate 检测通用信号）：复读套话/单行循环
+        # 会让去重率断崖式下降；正常叙事即使高频词多也维持高位
+        if len(text) >= 300:
+            grams = Counter(text[i:i + 3] for i in range(len(text) - 2))
+            r.gram_uniq = len(grams) / (len(text) - 2)
         # 判定：硬信号任一命中即 severe（需激进清洗/压低置信）
         if r.watermark_hits >= 6:
             r.findings.append("符号水印")
@@ -223,6 +239,10 @@ class Cleaner:
             r.findings.append("URL行")
         if r.dup_line_ratio > 0.4 and len(lines) >= 6:
             r.findings.append("页内行重复")
+        if r.short_run >= 8:
+            r.findings.append("推荐块形态")
+        if len(text) >= 300 and r.gram_uniq < 0.35:
+            r.findings.append("页内套话复读")
         if r.noise_ratio > 0.25:
             r.findings.append("噪声占比高")
         if r.pua_hits and r.pua_hits / max(1, len(text)) > 0.02:

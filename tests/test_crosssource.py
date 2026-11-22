@@ -14,14 +14,21 @@ from ebookmaker.http_client import FetchError
 from ebookmaker.models import ChapterData, TocEntry
 from ebookmaker.store import BookStore
 
-SENTS = ("他想起那年的雨夜，长安街上的灯火一盏盏熄灭，唯有城头的风还在呜咽。")
+_WORDS = ["雪夜", "营地", "号角", "老兵", "粥铺", "校场", "脚印", "账房", "算盘", "粮车",
+          "斥候", "家书", "铁匠", "炉火", "马棚", "城墙", "裂缝", "朱批", "长矛", "伤兵",
+          "药味", "口令", "驮马", "干粮", "旗杆", "石堰", "火把", "盾车", "驿马", "旧甲"]
 
 
 def prose(n_paragraphs: int) -> list:
-    """生成 n 段互不相同的正常叙事正文（带句号、无广告形态；同段重复会
-    触发页级审查的“页内行重复”信号，不符合真实正文形态）。"""
-    return ["他想起那年的雨夜，长安街上的灯火一盏盏熄灭，唯有城头的风还在呜咽。"
-            "第%d段，街角的灯下站着个熟悉的身影。" % k for k in range(n_paragraphs)]
+    """生成 n 段互不相同的正常叙事正文（逐段随机词序、带句号；真实小说
+    不会逐段重复同一句首，夹具需贴近这一形态）。"""
+    import random
+    out = []
+    for k in range(n_paragraphs):
+        rng = random.Random(k * 7 + 3)
+        sents = ["".join(rng.sample(_WORDS, 8)) + "。" for _ in range(4)]
+        out.append("".join(sents))
+    return out
 
 
 class Resp:

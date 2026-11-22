@@ -237,6 +237,9 @@ def learn_site(http, book_url: str, toc: List[TocEntry], cleaner: Cleaner,
     idxs = _sample_indices(len(toc), cfg.samples)
     per_doc: List[Dict[str, tuple]] = []
     sample_pages: List[Tuple[str, str]] = []   # (url, html)
+    oracle_lines: List[List[str]] = []      # 行业基准（trafilatura）每页抽取行
+    sample_titles: List[str] = []
+    from .sites.generic import content_oracle_lines
 
     for i in idxs:
         ch_url = SiteAdapter.chapter_url(book_url, toc[i].href)
@@ -246,6 +249,12 @@ def learn_site(http, book_url: str, toc: List[TocEntry], cleaner: Cleaner,
             log.debug("学习采样失败 %s: %s", ch_url, e)
             continue
         sample_pages.append((ch_url, html))
+        sample_titles.append(toc[i].title)
+        try:
+            ol = content_oracle_lines(html)
+        except Exception:  # noqa: BLE001
+            ol = []
+        oracle_lines.append(ol)
         soup = make_soup(html)
         per_doc.append(content_candidates(soup, cleaner, cfg.min_cjk))
 
@@ -287,16 +296,56 @@ def learn_site(http, book_url: str, toc: List[TocEntry], cleaner: Cleaner,
             return max(0.01, (1.0 - rep) ** 2)
         return 1.0
 
+    def _validation_stats(sel: str) -> Tuple[float, int, int]:
+        """行业基准校验（trafilatura 为标尺，抽取验证的行业标准做法）：
+        候选容器逐页清洗后与标尺比字数一致度取中位，并统计清洗后仍
+        severe 的页数。标尺全缺失时记中性 (1.0, 0, 0)，不阻塞学习；
+        **标尺自身输出未过复审的页跳过**（基准被污染时其一致度不可信，
+        否则会反过来给选偏的外壳容器背书）。"""
+        agrees, severe, used = [], 0, 0
+        for di, d in enumerate(per_doc):
+            if sel not in d or di >= len(oracle_lines) or not oracle_lines[di]:
+                continue
+            if cleaner.review_page(oracle_lines[di],
+                                   title=sample_titles[di]).severe:
+                continue  # 基准页本身带噪声，该页一致度不可信
+            blob = d[sel][2]
+            cl, _needs = cleaner.clean_page(blob.split("\n"),
+                                           title=sample_titles[di])
+            sc = sum(len(x) for x in cl)
+            if not sc:
+                continue
+            oc = sum(len(x) for x in oracle_lines[di])
+            agrees.append(min(sc, oc) / max(sc, oc))
+            if cleaner.review_page(cl, title=sample_titles[di]).severe:
+                severe += 1
+            used += 1
+        if not agrees:
+            return 1.0, 0, 0
+        agrees.sort()
+        return agrees[len(agrees) // 2], severe, used
+
     need = max(3, math.ceil(0.8 * len(per_doc)))
     best_sel, best_med, best_raw = None, 0, []
+    best_stats: Tuple[float, int, int] = (1.0, 0, 0)
     for sel, vals in agg.items():
         if len(vals) < need:
             continue
-        med = sorted(vals)[len(vals) // 2] * _repetition_factor(sel)   # 中位分×重复度因子，非首样本分
+        agree_med, sev, used = _validation_stats(sel)
+        # 打分 = 文本量中位 × 跨章重复惩罚 × 基准一致度²（与行业标尺
+        # 分歧的容器直接降权，选偏容器无法再靠文本量大胜出）
+        med = (sorted(vals)[len(vals) // 2] * _repetition_factor(sel)
+               * max(0.05, agree_med ** 2))
         if med > best_med:
             best_sel, best_med, best_raw = sel, med, raw_agg[sel]
+            best_stats = (agree_med, sev, used)
     if not best_sel:
         log.info("未能自动定位正文容器（站点可能需要 JS 渲染或存在加密字体）")
+        return None
+    agree_med, sev, used = best_stats
+    if used and (agree_med < 0.6 or sev > used * 0.5):
+        log.info("学习被拒：胜出容器与行业基准抽取器一致度仅 %.0f%%（%d/%d 页复审仍有噪声），"
+                 "疑似容器选偏，退回通用启发式抽取", agree_med * 100, sev, used)
         return None
 
     # 目录容器选择器
@@ -315,6 +364,8 @@ def learn_site(http, book_url: str, toc: List[TocEntry], cleaner: Cleaner,
         "type": "site",
         "hosts": [host],
         "content": {"selector": best_sel},
+        "validation": {"oracle": "trafilatura", "samples": used,
+                       "agreement": round(agree_med, 3), "noisy_pages": sev},
     }
     if toc_sel:
         # 存链接形态选择器（容器 + 空格 a），与描述符 toc.selector 语义一致
@@ -329,15 +380,26 @@ def learn_site(http, book_url: str, toc: List[TocEntry], cleaner: Cleaner,
     if toc_sel and len(site.parse_toc(book_html, book_url)) < 5:
         log.info("目录选择器回验不通过（%s），退回通用启发式抽取", host)
         return None
-    for ch_url, html in sample_pages:
-        learned_lines = site.parse_chapter(html, ch_url)
-        learned_cjk = len(TEXT_MASS_RE.findall("".join(learned_lines)))
-        if learned_cjk < min(best_raw) * 0.8:
-            log.info("站点学习回验未通过（%s），退回通用启发式抽取", host)
+    # 回验升级为基准对照：胜出选择器在**每个**样本页的完整抽取都不得
+    # 显著落后行业标尺（旧口径“不低于自身候选字数”会被整页选偏的规则蒙混）；
+    # 标尺自身带噪声的页跳过（不可信不参照）
+    for (ch_url, html), ti, ol in zip(sample_pages, sample_titles, oracle_lines):
+        lines_x = site.parse_chapter(html, ch_url)
+        sc = sum(len(x) for x in lines_x)
+        if not sc:
+            log.info("站点学习回验未通过（%s：抽取为空），退回通用启发式抽取", host)
+            return None
+        oc = sum(len(x) for x in ol)
+        if oc and not cleaner.review_page(ol, title=ti).severe \
+                and sc < oc * 0.55:
+            log.info("站点学习回验未通过（%s：%d 字 vs 基准 %d 字），退回通用启发式抽取",
+                     host, sc, oc)
             return None
 
-    log.info("站点自动适配成功: %s -> 正文 %s%s", host, best_sel,
-             "，目录 " + toc_sel if toc_sel else "")
+    log.info("站点自动适配成功: %s -> 正文 %s%s（基准一致度 %.0f%%，样本 %d 页）",
+             host, best_sel,
+             "，目录 " + toc_sel if toc_sel else "",
+             agree_med * 100, max(used, len(sample_pages)))
     return descriptor
 
 
