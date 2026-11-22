@@ -181,6 +181,11 @@ class Crawler:
                 stale += 1
         if stale:
             log.info("目录结构变更：%d 个旧章节缓存章名不再匹配，已作废重抓", stale)
+        # 孤儿缓存（超出目录长度：目录变短/插洞 shift 残留）一并清理，
+        # 否则 build 按文件扫描会多出重复章
+        orphan = self.store.delete_chapters_beyond(len(toc))
+        if orphan:
+            log.info("清理 %d 个超出目录长度的孤儿章节缓存", orphan)
         pending = []
         for i, entry in enumerate(toc, start=1):
             if not force and self.store.has_valid_chapter(i):
@@ -252,8 +257,18 @@ class Crawler:
         repaired = 0
         done = set()
         from . import bookindex
-        from .sites.base import _title_number
-        tnums = {n for n in (_title_number(e.title) for e in toc) if n is not None}
+        from .sites.base import _title_number, _href_number
+        # 主源已占编号集：标题序号与 URL 尾号**双取**——笔误救援条目
+        # （336.html 标题写“第366章”）按尾号占位，若只取标题序号会把
+        # 真编号当成空洞重复插入
+        tnums: set = set()
+        for e in toc:
+            n1 = _title_number(e.title)
+            n2 = _href_number(e.href)
+            if n1 is not None:
+                tnums.add(n1)
+            if n2 is not None and n2 < 100000:   # 随机长 ID 不算章号
+                tnums.add(n2)
         toc_grew = False
         for alt_url in alt_sources:
             todo = [i for i in bad if i not in done]
@@ -515,10 +530,14 @@ class Crawler:
                 oracle = []
             so = sum(len(l) for l in site_lines)
             oo = sum(len(l) for l in oracle)
-            if oracle and so * self.cfg.cleaner.dual_extractor_margin < oo < so * 3 \
+            # 标尺自身先过审：trafilatura favor_recall 偶尔把侧栏推荐区一并抽出
+            # （字数翻倍）——此时切标尺会引噪、计分歧会误杀好章，一律不采
+            oracle_ok = bool(oracle) and not self.cleaner.review_page(
+                oracle, title=title).severe
+            if oracle_ok and so * self.cfg.cleaner.dual_extractor_margin < oo < so * 3 \
                     and _pua_ratio(site_lines) < 0.02:
                 lines_in = oracle
-            if oracle and site_lines and so and oo:
+            if oracle_ok and site_lines and so and oo:
                 agree_sum += min(so, oo) / max(so, oo)
                 agree_n += 1
             more, needs_next = self.cleaner.clean_page(lines_in, title=title)

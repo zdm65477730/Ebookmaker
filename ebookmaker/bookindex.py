@@ -86,9 +86,10 @@ def other_sources(workdir: str | Path, book_title: str,
     """同书名的其他源 URL（新登记的在前）。"""
     key = book_key(book_title)
     urls = []
+    excl = (exclude_url or "").rstrip("/")   # 尾斜杠差异不得让主源自己混进候选源
     for s in load(workdir).get(key, []):
         u = s.get("url")
-        if u and u != exclude_url and u not in urls:
+        if u and u.rstrip("/") != excl and u not in urls:
             urls.append(u)
     return urls
 

@@ -145,6 +145,25 @@ class BookStore:
             except OSError:
                 pass
 
+    def delete_chapters_beyond(self, count: int) -> int:
+        """删除 index > count 的孤儿缓存文件（目录变短/插洞 shift 残留），返回删除数。"""
+        removed = 0
+        idxs = []
+        try:
+            for name in os.listdir(self.chapters_dir):
+                if name.endswith(".json"):
+                    try:
+                        idxs.append(int(name[:-5]))
+                    except ValueError:
+                        pass
+        except OSError:
+            return 0
+        for i in idxs:
+            if i > count:
+                self.delete_chapter(i)
+                removed += 1
+        return removed
+
     def shift_chapters(self, start: int, delta: int) -> None:
         """将 index >= start 的章节缓存文件整体平移 delta（跨源补抓插洞/回滚，
         避免目录新增一章导致其后全部缓存被当作错位作废）。"""

@@ -222,6 +222,17 @@ def build_epub(store: BookStore, out_path: str, cleaner: Optional[Cleaner] = Non
     chapters = store.iter_chapters()
     if not chapters:
         raise RuntimeError("工作区没有已缓存章节，请先执行 crawl")
+    # 以目录为准截断：缓存文件多于目录条目时，多出的（孤儿/插洞残留）
+    # 不进入成品，避免重复章
+    toc_n = len(store.load_toc())
+    if toc_n and len(chapters) > toc_n:
+        log.info("缓存章节 %d 个多于目录 %d 条，超出部分不纳入成品",
+                 len(chapters), toc_n)
+        chapters = chapters[:toc_n]
+    # 按目录文件名序重编号：跨源补洞的缓存平移会使文件内 index 字段留旧值，
+    # 直接用它生成章节文件名会碰撞（Duplicate name 警告的根因）
+    for pos, ch in enumerate(chapters, start=1):
+        ch.index = pos
 
     junk = set(store.load_junk_lines())
     if cleaner is not None:
