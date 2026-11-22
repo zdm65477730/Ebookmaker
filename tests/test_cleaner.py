@@ -109,3 +109,57 @@ def test_replace_rule_chapter_scoped():
     c = Cleaner(CleanerConfig(), [rule])
     assert c.clean_paragraphs(["测试甲"], chapter_index=3) == ["测试乙"]
     assert c.clean_paragraphs(["测试甲"], chapter_index=4) == ["测试甲"]
+
+
+def test_paren_pinyin_keeps_hanzi():
+    # 真实形态（武神主宰/bqg2 第一章）：“七大(禁jin)地”必须洗成“七大禁地”，
+    # 括号里的汉字是正文必要内容，只能去拼音和括号
+    c = Cleaner(CleanerConfig())
+    out = c.clean_paragraphs(
+        ["这里是天武大陆七大(禁jin)地之一，位于武域的死亡峡谷。"], title="第1章 重生")
+    assert out == ["这里是天武大陆七大禁地之一，位于武域的死亡峡谷。"]
+    # 多音节/带声调/括号后孤立字母噪声
+    assert c.clean_paragraphs(["他(身shēn)体一震。"], title="x")[0] == "他身体一震。"
+    assert c.clean_paragraphs(["淫(荡dàng)d妇一笑。"], title="x")[0] == "淫荡妇一笑。"
+    # 纯拼音括号（汉字已在括号外）→ 整体删
+    assert c.clean_paragraphs(["这是禁(jin)地。"], title="x")[0] == "这是禁地。"
+    # 不误伤：纯中文括号、带大写英文的括号、分页后缀、数字括号
+    for keep in ["此间(未完待续)另有一说。", "用(WiFi)连接。",
+                 "正文结束(1/3)。", "他说(大笑)着离开。"]:
+        assert c.clean_paragraphs([keep], title="x") == [keep]
+
+
+def test_title_line_separator_variants():
+    # 真实形态（武神主宰/bqg2）：目录写“第1章 重生”，正文页标题行写“第1章：重生”
+    # 去重必须跨分隔符形态生效；同时不误伤恰好以章号开头的叙事句
+    c = Cleaner(CleanerConfig())
+    out = c.clean_paragraphs(
+        ["第1章：重生", "武神历2216年。", "天武大陆至高之地——武域。"],
+        title="第1章 重生")
+    assert out == ["武神历2216年。", "天武大陆至高之地——武域。"]
+    # 带分页后缀的冒号形态（多页拼接时每页各插一次）
+    out2 = c.clean_paragraphs(
+        ["第1章：重生（2/3）", "正文段落一。", "正文段落二。"],
+        title="第1章 重生")
+    assert out2 == ["正文段落一。", "正文段落二。"]
+    # 间隔号/全角空格形态
+    out3 = c.clean_paragraphs(["第1章・重生", "正文。"], title="第1章 重生")
+    assert out3 == ["正文。"]
+    # 不误伤：正文句子提及章名但不独立成标题行
+    keep = ["第1章 重生是全书的起点，很多人讨论过。"]
+    assert c.clean_paragraphs(keep, title="第1章 重生") == keep
+    # 标题拆行：“第8章：”独立成行，内容在下一行
+    out4 = c.clean_paragraphs(["第8章：", "无双天下。", "正文。"], title="第8章 无双天下")
+    assert out4 == ["无双天下。", "正文。"]
+    # 源站标题截断：正文“第56章：败名裂” vs 目录“第56章 身败名裂”
+    out5 = c.clean_paragraphs(["第56章：败名裂", "正文内容。"], title="第56章 身败名裂")
+    assert out5 == ["正文内容。"]
+    # 截断条款不误伤：叙事句含章号但非标题形态
+    keep2 = ["第56章 身败名裂这五个字像一记耳光抽在他脸上，他永远不会忘记。"]
+    assert c.clean_paragraphs(keep2, title="第56章 身败名裂") == keep2
+    # 源站正文页标题措辞与目录完全不同（武神主宰 ch18 真实形态）
+    out6 = c.clean_paragraphs(["第18章：古朴小剑", "正文。"], title="第18章 神秘古书")
+    assert out6 == ["正文。"]
+    # 措辞不同条款不误伤：章号开头的长叙事段（带句读）
+    keep3 = ["第18章 神秘古书他翻来覆去看了三遍还是看不出所以然。"]
+    assert c.clean_paragraphs(keep3, title="第18章 神秘古书") == keep3

@@ -583,18 +583,14 @@ class Crawler:
         2) 否则看候选页的同系列分页链接（下一页）是否仍在本章文档上：
            软404/首页渲染的目录链接指向其它文档 → 拒；无分页链接 → 接受。
         """
-        norm = re.sub(r"\s+", "", title) if title else ""
+        norm = self.cleaner._normalize(title) if title else ""
         try:
             lines = self.site.parse_chapter(page_html, page_url)
         except Exception:
             lines = []
         if norm:
             for line in lines[:8]:
-                t = re.sub(r"\s+", "", line)
-                if not t:
-                    continue
-                t = re.sub(r"[（(【\[]\s*\d+\s*[/／]\s*\d+\s*[)）】\]]$", "", t)
-                if t == norm:
+                if self.cleaner._is_title_line(line, norm):
                     return True
         stem = self._doc_stem(page_url)
         if not stem:

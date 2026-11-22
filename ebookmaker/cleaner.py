@@ -25,9 +25,21 @@ ZERO_WIDTH_RE = re.compile(r"[\u200b-\u200f\u202a-\u202e\u2060\ufeff\ufffe\uffff
 CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 # 干扰符号（夹在正文里的水印字符，如 ♂领♂域♂文♂学♂、★☆）
 NOISE_SYMBOL_RE = re.compile(r"[♂♀★◎@☆цц]{1,}[ ]?")
-# 拼音注音乱码（防盗版插入的“汉字+拼音”括号噪声）
-PINYIN_NOISE_RE = re.compile(
-    r"[\u4e00-\u9fff]?[(（][\u4e00-\u9fff][a-zāáǎàōóǒòēéěèīíǐìūúǔùǖǘǚǜ]+[)）]")
+# 括号拼音注音（源站在正文汉字里插“（汉字+拼音”防盗/注音）：汉字是正文必要
+# 内容，只去拼音与括号：“七大(禁jin)地”→“七大禁地”；允许拼音后带 1~2 个
+# 孤立字母噪声（“（荡dàng)d”形态，后接汉字才删，防误伤英文词）
+_PINYIN_ANNO_RE = re.compile(
+    r"[(（]([\u4e00-\u9fff]{1,3})[a-zà-ǜ]+(?:\s+[a-zà-ǜ]+)*[)）]"
+    r"(?:[a-z]{1,2}(?=[\u4e00-\u9fff]|$))?")
+# 纯拼音括号（汉字已在括号外，括号内只是注音）→ 整体删除：“禁(jin)地”→“禁地”
+_PURE_PINYIN_RE = re.compile(
+    r"[(（][a-zà-ǜ]+(?:\s+[a-zà-ǜ]+)*[)）]")
+
+
+def _strip_paren_pinyin(text: str) -> str:
+    """括号拼音注音按内容判定：括号含汉字则保留汉字去拼音，纯拼音则整体去。"""
+    text = _PINYIN_ANNO_RE.sub(r"\1", text)
+    return _PURE_PINYIN_RE.sub("", text)
 # 连续 &nbsp; 残留
 NBSP_RE = re.compile(r"(?:\u00a0|&nbsp;)+")
 
@@ -127,12 +139,42 @@ class Cleaner:
         return text.translate(self._font_table) if self._font_table else text
 
     # ---------- 阶段 1-4：单章清洗 ----------
+    # 标题分隔符等价类：冒号/空格/间隔号等书写差异（“第1章：重生” vs “第1章 重生”）
+    _TITLE_SEP_RE = re.compile(r"[\s：:、，,·・．.\-—_~～]+")
+    _CH_HEAD_RE = re.compile(r"^第\s*(\d+)\s*[章节回]")
+
+    @classmethod
+    def _title_key(cls, s: str) -> str:
+        """标题等价键：剥分页后缀后去掉全部分隔符。"""
+        return cls._TITLE_SEP_RE.sub("", PAGE_SUFFIX_RE.sub("", s))
+
     @staticmethod
     def _is_title_line(text: str, norm_title: str) -> bool:
         if not norm_title:
             return False
         nt = Cleaner._normalize(text)
-        return bool(nt) and (nt == norm_title or PAGE_SUFFIX_RE.sub("", nt) == norm_title)
+        if not nt:
+            return False
+        if nt == norm_title or PAGE_SUFFIX_RE.sub("", nt) == norm_title:
+            return True
+        # 分隔符等价：源站正文标题行写法与目录不一致（冒号/间隔号）时仍能识别；
+        # 长度守护避免正文恰好以“第1章”三字符独立成行被误删
+        a, b = Cleaner._title_key(nt), Cleaner._title_key(norm_title)
+        if a and a == b and len(a) >= 4:
+            return True
+        # 章号一致 + 等价键子串：覆盖“第8章：”（标题拆行）与源站标题截断
+        # （正文“第56章：败名裂” vs 目录“第56章 身败名裂”）；叙事句子不会
+        # 恰好是目录标题的子串，故无误伤
+        m1 = Cleaner._CH_HEAD_RE.match(nt)
+        m2 = Cleaner._CH_HEAD_RE.match(norm_title)
+        if (m1 and m2 and m1.group(1) == m2.group(1)
+                and len(nt) <= 30
+                and not re.search(r"[。，！？；…]", nt)):   # 标题行不带句读，叙事句几乎必带
+            # 以本章章号开头的短行且无任何句读→标题行：覆盖源站正文页标题
+            # 与目录措辞不同/截断/拆行（如目录“第18章 神秘古书”、正文页
+            # “第18章：古朴小剑”）；叙事段落几乎不可能无句读且独立短行
+            return True
+        return False
 
     def _locate_start(self, raw_lines: Sequence[str], title: str) -> List[str]:
         """起始锚：预清洗（不过滤广告行）后定位首个“本章标题行”，从它开始取；
@@ -263,7 +305,7 @@ class Cleaner:
         text = CONTROL_RE.sub("", ZERO_WIDTH_RE.sub("", line))
         text = self._restore_font(text)          # 先还原加密字体码位
         text = NBSP_RE.sub(" ", text)
-        text = PINYIN_NOISE_RE.sub("", text)
+        text = _strip_paren_pinyin(text)
         text = NOISE_SYMBOL_RE.sub("", text)
         text = re.sub(r"[ \t]+", " ", text).strip()
         if not text:
